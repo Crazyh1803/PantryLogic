@@ -92,18 +92,21 @@ Recipe? parseCaption(String source) {
   final notes = <String>[
     'The source does not state servings. Set the actual yield before scaling this recipe.',
   ];
-  if (us && bullets.any((s) => RegExp(r'cup|tbsp|tsp').hasMatch(s)))
+  if (us && bullets.any((s) => RegExp(r'cup|tbsp|tsp').hasMatch(s))) {
     notes.add(
       'Cups and spoons are interpreted as US customary because the source uses pounds/ounces. Verify the source measurements.',
     );
-  if (ingredients.any((i) => !i.quantitySpecified))
+  }
+  if (ingredients.any((i) => !i.quantitySpecified)) {
     notes.add(
       'Some amounts are unspecified or for serving; they remain “as needed”.',
     );
-  if (text.contains('cranberr') && normalized(method).contains('raisins'))
+  }
+  if (text.contains('cranberr') && normalized(method).contains('raisins')) {
     notes.add(
       'Source conflict: the ingredients list cranberries, but the method says raisins. Choose which to use before cooking.',
     );
+  }
   return Recipe(
     title: title,
     protein: protein,

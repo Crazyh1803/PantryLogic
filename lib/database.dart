@@ -113,8 +113,9 @@ class AppDatabase extends GeneratedDatabase {
         plan.servings < 1 ||
         plan.servings > 40 ||
         plan.shoppingDays.any((i) => i < 0 || i >= plan.meals.length) ||
-        plan.sides.keys.any((i) => i < 0 || i >= plan.meals.length))
+        plan.sides.keys.any((i) => i < 0 || i >= plan.meals.length)) {
       throw const FormatException('Invalid menu dates or servings.');
+    }
     await customStatement(
       'INSERT INTO weekly_plans(start_date,plan_json,shopping_list_json) VALUES (?,?,?) ON CONFLICT(start_date) DO UPDATE SET plan_json=excluded.plan_json,shopping_list_json=excluded.shopping_list_json',
       [
@@ -151,13 +152,15 @@ class AppDatabase extends GeneratedDatabase {
   });
   Future<void> restore(String source) async {
     final j = jsonDecode(source) as Map<String, dynamic>;
-    if (j['version'] != 1)
+    if (j['version'] != 1) {
       throw const FormatException('Unsupported backup version.');
+    }
     final incoming = (j['recipes'] as List)
         .map((r) => Recipe.fromJson(Map<String, dynamic>.from(r as Map)))
         .toList();
-    if (j['preferences'] != null)
+    if (j['preferences'] != null) {
       Preferences.decode(j['preferences'] as String);
+    }
     await transaction(() async {
       final existing = {
         for (final r in await recipes()) normalized(r.title): r,
@@ -171,8 +174,9 @@ class AppDatabase extends GeneratedDatabase {
       }
       for (final h in j['history'] as List) {
         final id = ids[h['recipe_id']];
-        if (id == null)
+        if (id == null) {
           throw const FormatException('Backup references a missing recipe.');
+        }
         await markCooked(id, DateTime.parse(h['date'] as String));
       }
       for (final raw in j['plans'] as List) {
@@ -182,10 +186,11 @@ class AppDatabase extends GeneratedDatabase {
             plan.servings < 1 ||
             plan.servings > 40 ||
             plan.shoppingDays.any((i) => i < 0 || i >= plan.meals.length) ||
-            plan.sides.keys.any((i) => i < 0 || i >= plan.meals.length))
+            plan.sides.keys.any((i) => i < 0 || i >= plan.meals.length)) {
           throw const FormatException(
             'Backup contains an invalid weekly plan.',
           );
+        }
         final meals = plan.meals
             .map((r) => Recipe.fromJson({...r.toJson(), 'id': ids[r.id]}))
             .toList();

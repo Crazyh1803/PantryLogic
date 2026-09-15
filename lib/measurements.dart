@@ -14,8 +14,9 @@ class Measurements {
         0.75: '¾',
       };
       for (final e in values.entries) {
-        if ((part - e.key).abs() < 0.006)
+        if ((part - e.key).abs() < 0.006) {
           return '${whole == 0 ? '' : whole}${e.value}';
+        }
       }
     }
     if ((value - value.round()).abs() < 0.006) return '${value.round()}';
@@ -33,16 +34,18 @@ class Measurements {
     if (c == null) return '${number(i.quantity, fractions: true)} ${i.unit}';
     final base = i.quantity * c.$2;
     if (c.$1 == 'g') {
-      if (system == 'metric')
+      if (system == 'metric') {
         return base >= 1000 ? '${number(base / 1000)} kg' : '${number(base)} g';
+      }
       final ounces = base / 28.349523125;
       return ounces >= 16
           ? '${number(ounces / 16, fractions: true)} lb'
           : '${number(ounces, fractions: true)} oz';
     }
     if (c.$1 != 'ml') return '${number(base, fractions: true)} ${c.$1}';
-    if (volumeStyle == 'ml')
+    if (volumeStyle == 'ml') {
       return base >= 1000 ? '${number(base / 1000)} L' : '${number(base)} mL';
+    }
     final cup = system == 'us'
         ? 236.5882365
         : system == 'uk'
@@ -63,10 +66,12 @@ class Measurements {
         : system == 'uk'
         ? 'UK imperial'
         : 'metric';
-    if (base >= cup / 4 - 0.01)
+    if (base >= cup / 4 - 0.01) {
       return '${number(base / cup, fractions: true)} $label cup';
-    if (base >= tbsp - 0.01)
+    }
+    if (base >= tbsp - 0.01) {
       return '${number(base / tbsp, fractions: true)} $label tbsp';
+    }
     return '${number(base / tsp, fractions: true)} $label tsp';
   }
 }

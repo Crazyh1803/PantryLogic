@@ -17,8 +17,9 @@ Future<http.Response> guardedHttp(
     for (var attempt = 0; ; attempt++) {
       final response = await call();
       if (![500, 502, 503, 504, 529].contains(response.statusCode) ||
-          attempt >= 2)
+          attempt >= 2) {
         return response;
+      }
       await Future<void>.delayed(retryDelay * (attempt + 1));
     }
   } on TimeoutException {
@@ -45,8 +46,9 @@ String providerError(
   String detail = '';
   try {
     final error = (jsonDecode(response.body) as Map)['error'];
-    if (error is Map)
+    if (error is Map) {
       detail = (error['message'] ?? error['status'] ?? '').toString();
+    }
   } catch (_) {}
   if (key.isNotEmpty) detail = detail.replaceAll(key, '[redacted]');
   detail = detail.replaceAll(
@@ -112,13 +114,16 @@ class GeminiDirectService implements AIService {
     Uint8List? image,
     String? mimeType,
   }) async {
-    if (apiKey.trim().isEmpty)
+    if (apiKey.trim().isEmpty) {
       throw const FormatException('Add an API key in Settings first.');
+    }
     final selectedModel = model.trim().replaceFirst(RegExp(r'^models/'), '');
-    if (!RegExp(r'^[a-zA-Z0-9._-]+$').hasMatch(selectedModel))
+    if (!RegExp(r'^[a-zA-Z0-9._-]+$').hasMatch(selectedModel)) {
       throw const AiRequestException(400, 'Invalid model identifier.');
-    if (image != null && image.length > 10 * 1024 * 1024)
+    }
+    if (image != null && image.length > 10 * 1024 * 1024) {
       throw const FormatException('Choose an image smaller than 10 MB.');
+    }
     final transport = _GeminiTransport(client, apiKey, selectedModel);
     final sdk = google.GenerativeModel(
       model: selectedModel,
@@ -139,8 +144,9 @@ class GeminiDirectService implements AIService {
         ])
         .timeout(const Duration(seconds: 90));
     final output = response.text;
-    if (output == null || output.trim().isEmpty)
+    if (output == null || output.trim().isEmpty) {
       throw const FormatException('No complete recipe found.');
+    }
     return decodeRecipe(output);
   }
 
@@ -165,10 +171,11 @@ class GeminiDirectService implements AIService {
       'Compose one new $protein dinner. Household preferences: $profile. Do not repeat or rename these dishes: ${jsonEncode(excludedTitles)}. Prefer using these perishables: ${jsonEncode(freshIngredients)}.',
     );
     if (recipe.protein != protein ||
-        excludedTitles.any((t) => normalized(t) == normalized(recipe.title)))
+        excludedTitles.any((t) => normalized(t) == normalized(recipe.title))) {
       throw const FormatException(
         'Generated recipe broke the requested constraints. Please retry.',
       );
+    }
     return recipe;
   }
 }
@@ -188,11 +195,12 @@ class _GeminiTransport extends http.BaseClient {
         await inner.send(copy),
       ).timeout(const Duration(seconds: 75));
     });
-    if (response.statusCode != 200)
+    if (response.statusCode != 200) {
       throw AiRequestException(
         response.statusCode,
         providerError('Gemini', response, apiKey, model),
       );
+    }
     return http.StreamedResponse(
       Stream.value(response.bodyBytes),
       response.statusCode,

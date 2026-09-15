@@ -70,9 +70,10 @@ double? parseAmount(Object? value) {
   final number = double.tryParse(s);
   if (number != null) return number;
   final m = RegExp(r'^(?:(\d+)\s+)?(\d+)\s*/\s*(\d+)$').firstMatch(s);
-  if (m != null && int.parse(m[3]!) != 0)
+  if (m != null && int.parse(m[3]!) != 0) {
     return (double.tryParse(m[1] ?? '') ?? 0) +
         int.parse(m[2]!) / int.parse(m[3]!);
+  }
   return null;
 }
 
@@ -83,13 +84,15 @@ Recipe decodeRecipe(Object? value) {
           .trim()
           .replaceFirst(RegExp(r'^```(?:json)?\s*'), '')
           .replaceFirst(RegExp(r'\s*```$'), '');
-      if (!text.startsWith('{') && text.contains('{') && text.contains('}'))
+      if (!text.startsWith('{') && text.contains('{') && text.contains('}')) {
         text = text.substring(text.indexOf('{'), text.lastIndexOf('}') + 1);
+      }
       value = jsonDecode(text);
     }
     if (value is Map && value['recipe'] is Map) value = value['recipe'];
-    if (value is! Map)
+    if (value is! Map) {
       throw const FormatException('The response was not a recipe object.');
+    }
     final j = Map<String, dynamic>.from(value);
     var protein = normalized(j['protein']?.toString() ?? 'other');
     protein = switch (protein) {
@@ -99,19 +102,22 @@ Recipe decodeRecipe(Object? value) {
     };
     if (!proteins.contains(protein)) protein = 'other';
     final count = parseAmount(j['servings']) ?? 1;
-    if (count < 1 || count != count.roundToDouble())
+    if (count < 1 || count != count.roundToDouble()) {
       throw const FormatException(
         'Recipe servings must be a positive whole number.',
       );
+    }
     final ingredients = <Ingredient>[];
     for (final raw in j['ingredients'] as List? ?? []) {
-      if (raw is! Map)
+      if (raw is! Map) {
         throw const FormatException(
           'An ingredient was not structured correctly.',
         );
+      }
       final amount = parseAmount(raw['quantity'] ?? raw['amount']);
-      if (amount != null && (!amount.isFinite || amount < 0))
+      if (amount != null && (!amount.isFinite || amount < 0)) {
         throw const FormatException('An ingredient amount is invalid.');
+      }
       final specified = amount != null && amount > 0;
       ingredients.add(
         Ingredient(
@@ -143,10 +149,11 @@ Recipe decodeRecipe(Object? value) {
             .toList();
     if ((j['title'] ?? '').toString().trim().isEmpty ||
         ingredients.isEmpty ||
-        instructions.isEmpty)
+        instructions.isEmpty) {
       throw const FormatException(
         'No complete recipe was found: include a title, ingredient list and cooking steps. Unspecified amounts are allowed.',
       );
+    }
     return Recipe(
       prepMinutes: (parseAmount(j['prep_minutes']) ?? 0) > 0
           ? parseAmount(j['prep_minutes'])!.toInt()

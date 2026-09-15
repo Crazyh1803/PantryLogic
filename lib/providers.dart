@@ -27,8 +27,9 @@ class ProviderService extends GeminiDirectService {
     super.client,
   });
   Future<List<String>> availableModels() async {
-    if (apiKey.trim().isEmpty)
+    if (apiKey.trim().isEmpty) {
       throw FormatException('Enter your $provider key first.');
+    }
     final host = switch (provider) {
       'Gemini' => 'generativelanguage.googleapis.com',
       'Claude' => 'api.anthropic.com',
@@ -52,8 +53,7 @@ class ProviderService extends GeminiDirectService {
       final query = <String, String>{
         if (provider == 'Gemini') 'pageSize': '100',
         if (provider == 'Claude') 'limit': '100',
-        if (cursor != null)
-          (provider == 'Gemini' ? 'pageToken' : 'after_id'): cursor,
+        (provider == 'Gemini' ? 'pageToken' : 'after_id'): ?cursor,
       };
       final response = await guardedHttp(
         () => client
@@ -67,19 +67,21 @@ class ProviderService extends GeminiDirectService {
             )
             .timeout(const Duration(seconds: 30)),
       );
-      if (response.statusCode != 200)
+      if (response.statusCode != 200) {
         throw AiRequestException(
           response.statusCode,
           providerError(provider, response, apiKey, model),
         );
+      }
       final body = jsonDecode(response.body) as Map;
       for (final item
           in (body[provider == 'Gemini' ? 'models' : 'data'] as List? ?? [])) {
         if (provider == 'Gemini' &&
             !(item['supportedGenerationMethods'] as List? ?? []).contains(
               'generateContent',
-            ))
+            )) {
           continue;
+        }
         final id = (item[provider == 'Gemini' ? 'name' : 'id'] ?? '')
             .toString()
             .replaceFirst(RegExp(r'^models/'), '');
@@ -101,14 +103,17 @@ class ProviderService extends GeminiDirectService {
     Uint8List? image,
     String? mimeType,
   }) async {
-    if (provider == 'Gemini')
+    if (provider == 'Gemini') {
       return super.request(prompt, image: image, mimeType: mimeType);
-    if (apiKey.trim().isEmpty)
+    }
+    if (apiKey.trim().isEmpty) {
       throw FormatException('Add your $provider API key in Settings.');
-    if (image != null && image.length > 7 * 1024 * 1024)
+    }
+    if (image != null && image.length > 7 * 1024 * 1024) {
       throw const FormatException(
         'For this provider, use an image smaller than 7 MB.',
       );
+    }
     const system = recipeInstructions;
     final encoded = image == null ? null : base64Encode(image);
     final mime = mimeType ?? 'image/jpeg';
@@ -222,27 +227,30 @@ class ProviderService extends GeminiDirectService {
           (p) => p['type'] == 'tool_use' && p['name'] == 'save_recipe',
         );
         if (tools.isNotEmpty) return decodeRecipe(tools.first['input']);
-        if (j['stop_reason'] == 'max_tokens')
+        if (j['stop_reason'] == 'max_tokens') {
           throw const FormatException(
             'Claude output was truncated; use a shorter recipe or another model.',
           );
+        }
         output = (j['content'] as List)
             .where((p) => p['type'] == 'text')
             .map((p) => p['text'])
             .join();
       } else if (provider == 'OpenAI') {
-        if (j['status'] == 'incomplete')
+        if (j['status'] == 'incomplete') {
           throw const FormatException(
             'OpenAI returned an incomplete response. Try a shorter source or another model.',
           );
+        }
         final refusals = (j['output'] as List)
             .where((p) => p['type'] == 'message')
             .expand((p) => p['content'] as List)
             .where((p) => p['type'] == 'refusal');
-        if (refusals.isNotEmpty)
+        if (refusals.isNotEmpty) {
           throw const FormatException(
             'OpenAI declined this request. Try another source or provider.',
           );
+        }
         output = (j['output'] as List)
             .where((p) => p['type'] == 'message')
             .expand((p) => p['content'] as List)

@@ -131,8 +131,9 @@ class _HomeState extends State<Home> {
             .toSet();
         await db!.transaction(() async {
           for (final r in starterSides()) {
-            if (!existing.contains(normalized(r.title)))
+            if (!existing.contains(normalized(r.title))) {
               await db!.saveRecipe(r);
+            }
           }
           await db!.setSetting('side_seeds', 'true');
         });
@@ -159,8 +160,9 @@ class _HomeState extends State<Home> {
       }
       await reload();
       if (mounted) setState(() => ready = true);
-      if (mounted)
+      if (mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) => birthdayPrompt());
+      }
       if (Platform.isAndroid) {
         shares = ReceiveSharingIntent.instance.getMediaStream().listen(
           handleShares,
@@ -172,11 +174,12 @@ class _HomeState extends State<Home> {
         ReceiveSharingIntent.instance.reset();
       }
     } catch (_) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => startupError =
               'Could not open local storage. Please close and reopen Pantry Logic.',
         );
+      }
     }
   }
 
@@ -186,8 +189,9 @@ class _HomeState extends State<Home> {
     if (file.type == SharedMediaType.image) {
       try {
         final bytes = await File(file.path).readAsBytes();
-        if (bytes.length > 10 * 1024 * 1024)
+        if (bytes.length > 10 * 1024 * 1024) {
           throw const FormatException('Image exceeds 10 MB.');
+        }
         imageBytes = bytes;
         imageName = 'Shared screenshot';
         ingestMode = 'image';
@@ -248,8 +252,9 @@ class _HomeState extends State<Home> {
   }
 
   void message(String text) {
-    if (mounted)
+    if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+    }
   }
 
   Future<void> run(Future<void> Function() action) async {
@@ -493,10 +498,11 @@ class _HomeState extends State<Home> {
                     );
                     if (date == null) return;
                     await run(() async {
-                      if (!recipes.any((r) => r.id == recipe.id))
+                      if (!recipes.any((r) => r.id == recipe.id)) {
                         throw const FormatException(
                           'This recipe was removed from the library. Restore it before logging a meal.',
                         );
+                      }
                       await db!.markCooked(recipe.id!, date);
                       await reload();
                       message('Added to cooking history.');
@@ -557,7 +563,7 @@ class _HomeState extends State<Home> {
 
   @override
   Widget build(BuildContext context) {
-    if (startupError != null)
+    if (startupError != null) {
       return Scaffold(
         body: Center(
           child: Padding(
@@ -566,8 +572,10 @@ class _HomeState extends State<Home> {
           ),
         ),
       );
-    if (!ready)
+    }
+    if (!ready) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     final bodies = [week, library, groceries, importing, settings];
     return Scaffold(
       appBar: AppBar(
@@ -1133,8 +1141,9 @@ class _HomeState extends State<Home> {
                       bytes: Uint8List.fromList(utf8.encode(data)),
                     );
                     if (path != null) {
-                      if (!Platform.isAndroid && !Platform.isIOS)
+                      if (!Platform.isAndroid && !Platform.isIOS) {
                         await File(path).writeAsString(data);
+                      }
                       message('Backup saved.');
                     }
                   }),
@@ -1151,8 +1160,9 @@ class _HomeState extends State<Home> {
                       withData: true,
                     );
                     if (f == null) return;
-                    if (f.files.single.size > 10 * 1024 * 1024)
+                    if (f.files.single.size > 10 * 1024 * 1024) {
                       throw const FormatException('Backup exceeds 10 MB.');
+                    }
                     await db!.restore(utf8.decode(f.files.single.bytes!));
                     prefs = Preferences.decode(
                       await db!.setting('preferences'),
@@ -1314,7 +1324,7 @@ class _RecipeEditorState extends State<RecipeEditor> {
       await widget.onSave?.call(recipe);
       if (mounted) Navigator.pop(context, recipe);
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => error = e is FormatException
               ? e.message
@@ -1322,6 +1332,7 @@ class _RecipeEditorState extends State<RecipeEditor> {
               ? 'A recipe with this title already exists. Choose a different title.'
               : 'Could not save. Check your recipe fields and try again.',
         );
+      }
     } finally {
       if (mounted) setState(() => saving = false);
     }

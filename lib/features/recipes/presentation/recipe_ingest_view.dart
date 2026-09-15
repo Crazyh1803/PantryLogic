@@ -6,12 +6,13 @@ extension _RecipeIngestView on _HomeState {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final target = captionAnchor.currentContext;
-      if (target != null)
+      if (target != null) {
         Scrollable.ensureVisible(
           target,
           duration: const Duration(milliseconds: 250),
           alignment: 0.2,
         );
+      }
       captionFocus.requestFocus();
     });
   }

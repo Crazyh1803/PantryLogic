@@ -12,8 +12,9 @@ Future<void> main() async {
     client: MockClient((request) async {
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       if (request.headers['x-goog-api-key'] != 'test-key' ||
-          body['generationConfig']['responseMimeType'] != 'application/json')
+          body['generationConfig']['responseMimeType'] != 'application/json') {
         throw StateError('Invalid request');
+      }
       return http.Response(
         jsonEncode({
           'candidates': [

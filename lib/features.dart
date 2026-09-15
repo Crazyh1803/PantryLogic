@@ -51,8 +51,9 @@ extension _HomeFeatures on _HomeState {
           now,
           int.tryParse(await db!.setting('birthday_year') ?? '') ?? 0,
         ) ||
-        !mounted)
+        !mounted) {
       return;
+    }
     await db!.setSetting('birthday_year', '${now.year}');
     if (!mounted) return;
     await showDialog<void>(
@@ -285,7 +286,7 @@ extension _HomeFeatures on _HomeState {
                 trailing: const Icon(Icons.edit_outlined),
                 onTap: () async {
                   final v = await askText(item.$1, item.$2);
-                  if (v != null)
+                  if (v != null) {
                     updateFeatures(() {
                       if (item.$1 == 'Cooking equipment') {
                         prefs.equipment = v;
@@ -295,6 +296,7 @@ extension _HomeFeatures on _HomeState {
                         prefs.stores = v;
                       }
                     });
+                  }
                 },
               ),
             const Padding(
@@ -728,10 +730,11 @@ extension _HomeFeatures on _HomeState {
             p.start != day(start) &&
             p.start.isBefore(end) &&
             p.start.add(Duration(days: p.meals.length)).isAfter(day(start)),
-      ))
+      )) {
         throw const FormatException(
           'These dates overlap an existing menu. Choose another start date.',
         );
+      }
       final options = Preferences.decode(prefs.encode())..days = count;
       final candidates = [...recipes];
       List<Recipe>? meals;
@@ -763,10 +766,11 @@ extension _HomeFeatures on _HomeState {
                   (counts[p] ?? 0) < options.weeklyLimits[p]!,
             )
             .toList();
-        if (allowed.isEmpty)
+        if (allowed.isEmpty) {
           throw const FormatException(
             'Every protein allowance for this calendar week is used. Adjust limits before generating more recipes.',
           );
+        }
         allowed.sort(
           (a, b) => candidates
               .where(
@@ -828,10 +832,11 @@ extension _HomeFeatures on _HomeState {
           /* Try the next missing slot. */
         }
       }
-      if (meals == null)
+      if (meals == null) {
         throw const FormatException(
           'AI could not fill this menu. Try fewer days or adjust weekly protein limits and dislikes.',
         );
+      }
       await db!.transaction(() async {
         final saved = <Recipe>[];
         for (final r in meals!) {

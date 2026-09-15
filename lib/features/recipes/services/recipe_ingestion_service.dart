@@ -15,8 +15,9 @@ class RecipeIngestionService {
   RecipeIngestionService(this.ai, {this.client});
   Future<String> scrape(String url) async {
     final uri = Uri.tryParse(url.trim());
-    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty)
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
       throw const FormatException('Use a valid HTTPS recipe link.');
+    }
     final transport = client ?? http.Client();
     try {
       final response = await transport
@@ -25,19 +26,23 @@ class RecipeIngestionService {
               ..headers['User-Agent'] = 'PantryLogicRecipeImporter/1.1',
           )
           .timeout(const Duration(seconds: 20));
-      if ([401, 403, 404].contains(response.statusCode))
+      if ([401, 403, 404].contains(response.statusCode)) {
         throw const EmptyScrapedContentException();
-      if (response.statusCode == 429)
+      }
+      if (response.statusCode == 429) {
         throw const AiRequestException(429, 'HTTP 429');
-      if (response.statusCode != 200)
+      }
+      if (response.statusCode != 200) {
         throw const EmptyScrapedContentException();
+      }
       final bytes = <int>[];
       await for (final chunk in response.stream.timeout(
         const Duration(seconds: 20),
       )) {
         bytes.addAll(chunk);
-        if (bytes.length > 3 * 1024 * 1024)
+        if (bytes.length > 3 * 1024 * 1024) {
           throw const EmptyScrapedContentException();
+        }
       }
       final doc = html.parse(utf8.decode(bytes, allowMalformed: true));
       final structured = <Map>[];
@@ -48,8 +53,9 @@ class RecipeIngestionService {
           }
         } else if (value is Map) {
           final t = value['@type'];
-          if (t == 'Recipe' || t is List && t.contains('Recipe'))
+          if (t == 'Recipe' || t is List && t.contains('Recipe')) {
             structured.add(value);
+          }
           if (value['@graph'] != null) scan(value['@graph']);
         }
       }
@@ -90,8 +96,9 @@ class RecipeIngestionService {
             RegExp(
                   r'log in to (continue|see|view)|sign in to (continue|see|view)|enable javascript',
                 ).hasMatch(lower) &&
-                !lower.contains('ingredients'))
+                !lower.contains('ingredients')) {
           throw const EmptyScrapedContentException();
+        }
       }
       if (text.trim().length <= 100) throw const EmptyScrapedContentException();
       return text.length > 24000 ? text.substring(0, 24000) : text;
@@ -107,12 +114,14 @@ class RecipeIngestionService {
     String? mimeType,
   }) async {
     final source = url.trim(), notes = blurb.trim();
-    if (source.isEmpty && notes.isEmpty && image == null)
+    if (source.isEmpty && notes.isEmpty && image == null) {
       throw const FormatException('Add a link, text or image.');
+    }
     if (source.isNotEmpty) {
       final uri = Uri.tryParse(source);
-      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty)
+      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty) {
         throw const FormatException('Use a valid HTTPS recipe link.');
+      }
     }
     String extracted = '';
     if (source.isNotEmpty && image == null) {

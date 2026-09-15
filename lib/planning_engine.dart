@@ -16,8 +16,9 @@ class PlanningEngine {
     for (final h in history) {
       if (day(h.date).isAfter(day(before))) continue;
       if (!result.containsKey(h.recipeId) ||
-          h.date.isAfter(result[h.recipeId]!))
+          h.date.isAfter(result[h.recipeId]!)) {
         result[h.recipeId] = day(h.date);
+      }
     }
     return result;
   }
@@ -58,17 +59,19 @@ class PlanningEngine {
     for (final p in reservations) {
       if (day(p.start) == day(start)) continue;
       for (var i = 0; i < p.meals.length; i++) {
-        if (p.meals[i].id != null)
+        if (p.meals[i].id != null) {
           effectiveHistory.add(
             CookedMeal(-1, p.meals[i].id!, p.start.add(Duration(days: i))),
           );
+        }
       }
     }
     final anchors = dueAnchors(recipes, history, start);
-    if (anchors.length > 7)
+    if (anchors.length > 7) {
       throw PlanningException(
         'More than seven recurring recipes are due. Adjust their intervals before planning.',
       );
+    }
     const slots = [
       'chicken',
       'flexible',
@@ -84,16 +87,18 @@ class PlanningEngine {
       for (final h in effectiveHistory.where((h) => h.recipeId == r.id)) {
         final gap = day(date).difference(day(h.date)).inDays.abs();
         if (gap < r.cooldownDays ||
-            r.targetFrequencyDays != null && gap < r.targetFrequencyDays!)
+            r.targetFrequencyDays != null && gap < r.targetFrequencyDays!) {
           return false;
+        }
       }
       return true;
     }
 
     bool search(int index) {
       if (++visits > 200000) return false;
-      if (index == 7)
+      if (index == 7) {
         return anchors.every((a) => chosen.any((r) => r.id == a.id));
+      }
       final remaining = anchors
           .where((a) => !chosen.any((r) => r.id == a.id))
           .length;
@@ -143,10 +148,11 @@ class PlanningEngine {
       return false;
     }
 
-    if (!search(0))
+    if (!search(0)) {
       throw PlanningException(
         'No valid week fits the library, cooldowns and recurring recipes. Add more recipes (including chicken, beef and fish), or adjust recurring intervals. No rules were relaxed.',
       );
+    }
     validate(chosen, recipes, effectiveHistory, start, anchors: anchors);
     return chosen;
   }
@@ -159,22 +165,26 @@ class PlanningEngine {
     List<Recipe>? anchors,
   }) {
     if (meals.length != 7 ||
-        meals.map((r) => normalized(r.title)).toSet().length != 7)
+        meals.map((r) => normalized(r.title)).toSet().length != 7) {
       throw PlanningException('A week must contain seven distinct recipes.');
+    }
     const fixed = {0: 'chicken', 2: 'beef', 3: 'fish', 4: 'chicken'};
     for (var i = 0; i < 7; i++) {
       final r = meals[i];
-      if (fixed.containsKey(i) && r.protein != fixed[i])
+      if (fixed.containsKey(i) && r.protein != fixed[i]) {
         throw PlanningException('Protein cadence was not met.');
+      }
       final date = day(start).add(Duration(days: i));
       for (final h in history.where((h) => h.recipeId == r.id)) {
-        if (date.difference(day(h.date)).inDays.abs() < r.cooldownDays)
+        if (date.difference(day(h.date)).inDays.abs() < r.cooldownDays) {
           throw PlanningException('${r.title} is still on cooldown.');
+        }
       }
     }
     for (final a in anchors ?? dueAnchors(library, history, start)) {
-      if (!meals.any((r) => r.id == a.id))
+      if (!meals.any((r) => r.id == a.id)) {
         throw PlanningException('Recurring recipe ${a.title} is missing.');
+      }
     }
   }
 

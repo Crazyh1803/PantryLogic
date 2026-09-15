@@ -36,8 +36,9 @@ class AiFailure {
 
 class AiExceptionHandler {
   static AiFailure describe(Object error, {bool fromLink = false}) {
-    if (error is AiFallbackException)
+    if (error is AiFallbackException) {
       return describe(error.cause, fromLink: fromLink);
+    }
     final text = error.toString().toUpperCase();
     final code = error is AiRequestException
         ? error.statusCode
@@ -47,10 +48,11 @@ class AiExceptionHandler {
                 ).firstMatch(text)?.group(1) ??
                 '',
           );
-    if (code == 429 || text.contains('RESOURCE_EXHAUSTED'))
+    if (code == 429 || text.contains('RESOURCE_EXHAUSTED')) {
       return const AiFailure(
         'AI rate limit reached. Please wait about 30 seconds and try again.',
       );
+    }
     final badKey =
         code == 401 ||
         text.contains('UNAUTHENTICATED') ||
@@ -59,47 +61,53 @@ class AiExceptionHandler {
         RegExp(
           r'(INVALID|MISSING|ADD|ENTER|REJECTED).{0,35}(API KEY|API_KEY)|API KEY.{0,35}(INVALID|MISSING|REJECTED)',
         ).hasMatch(text);
-    if (badKey)
+    if (badKey) {
       return const AiFailure(
         'Invalid API key. Please check your key in Settings > AI Configuration.',
         AiErrorAction.settings,
       );
+    }
     if (error is SocketException ||
         error is TimeoutException ||
         error is http.ClientException ||
         text.contains('NETWORK') ||
         text.contains('CANNOT REACH') ||
         text.contains('TIMED OUT') ||
-        text.contains('SOCKETEXCEPTION'))
+        text.contains('SOCKETEXCEPTION')) {
       return const AiFailure(
         'Network connection issue. Please check your internet connection.',
       );
+    }
     if (error is EmptyScrapedContentException ||
         (fromLink &&
             error is! AiRequestException &&
             (code == 403 ||
                 text.contains('NO RECIPE') ||
                 text.contains('NO COMPLETE RECIPE') ||
-                text.contains('LOGIN'))))
+                text.contains('LOGIN')))) {
       return const AiFailure(
         "Couldn't extract recipe text from that link. Try pasting the caption or uploading a screenshot below.",
         AiErrorAction.pasteText,
       );
-    if (code == 503 || code == 529)
+    }
+    if (code == 503 || code == 529) {
       return const AiFailure(
         'The AI service is busy right now. Please try again shortly or choose another model in Settings > AI Configuration.',
         AiErrorAction.settings,
       );
-    if (code == 400 || code == 404)
+    }
+    if (code == 400 || code == 404) {
       return const AiFailure(
         'The selected AI model or request is unavailable for this account. Load an available model in Settings > AI Configuration and test again.',
         AiErrorAction.settings,
       );
-    if (code == 403)
+    }
+    if (code == 403) {
       return const AiFailure(
         'This API key does not have access. Check its permissions and API billing in Settings > AI Configuration.',
         AiErrorAction.settings,
       );
+    }
     return const AiFailure(
       "We couldn't parse that recipe. Try pasting the text directly.",
       AiErrorAction.pasteText,

@@ -48,11 +48,10 @@ class Preferences {
       : r.cooldownDays;
   String slot(DateTime date) => 'flexible';
   String context(List<String> ids) =>
-      'Region: $region. Frequent stores: $stores. Available cooking equipment: $equipment. ' +
-      family
+      'Region: $region. Frequent stores: $stores. Available cooking equipment: $equipment. ${family
           .where((m) => ids.contains(m.id))
           .map((m) => '${m.name}: likes ${m.likes}; dislikes ${m.dislikes}.')
-          .join(' ');
+          .join(' ')}';
   bool accepts(Recipe r, List<String> ids) {
     final names = r.ingredients.map((i) => normalized(i.name)).join(' ');
     return !family
@@ -99,11 +98,12 @@ class Preferences {
     p.volumeStyle =
         j['volumeStyle'] ??
         (p.volumeUnit == 'ml' || p.volumeUnit == 'l' ? 'ml' : 'kitchen');
-    if (j['weeklyLimits'] is Map)
+    if (j['weeklyLimits'] is Map) {
       p.weeklyLimits = {
         for (final protein in proteins)
           protein: (j['weeklyLimits'] as Map)[protein] as int?,
       };
+    }
     p.provider = j['provider'] ?? 'Gemini';
     p.fallback = j['fallback'] ?? false;
     p.cadence = List<String>.from(j['cadence'] ?? p.cadence);
@@ -119,8 +119,9 @@ class Preferences {
         !['metric', 'us', 'uk'].contains(p.measurementSystem) ||
         !['ml', 'kitchen'].contains(p.volumeStyle) ||
         p.cadence.length != 7 ||
-        p.cadence.any((s) => !['flexible', ...proteins].contains(s)))
+        p.cadence.any((s) => !['flexible', ...proteins].contains(s))) {
       throw const FormatException('Invalid planning preferences.');
+    }
     return p;
   }
   Preferences();
@@ -160,8 +161,9 @@ class FlexiblePlanner {
     final cooked = [...history]..sort((a, b) => a.id.compareTo(b.id));
     for (final h in cooked) {
       final r = byId[h.recipeId];
-      if (r != null && !r.isSide && inWeek(h.date))
+      if (r != null && !r.isSide && inWeek(h.date)) {
         byDate[day(h.date)] = r.protein;
+      }
     }
     return {
       for (final p in proteins) p: byDate.values.where((v) => v == p).length,
@@ -195,12 +197,14 @@ class FlexiblePlanner {
     ];
     for (final p in plans.where((p) => p.start != replacing)) {
       for (final e in p.meals.indexed) {
-        if (normalized(e.$2.title) == normalized(r.title))
+        if (normalized(e.$2.title) == normalized(r.title)) {
           dates.add(p.start.add(Duration(days: e.$1)));
+        }
       }
       for (final e in p.sides.entries) {
-        if (normalized(e.value.title) == normalized(r.title))
+        if (normalized(e.value.title) == normalized(r.title)) {
           dates.add(p.start.add(Duration(days: e.key)));
+        }
       }
     }
     return dates.every(
@@ -223,8 +227,9 @@ class FlexiblePlanner {
     final anchors = library.where((r) {
       if (r.isSide ||
           r.targetFrequencyDays == null ||
-          !prefs.accepts(r, people))
+          !prefs.accepts(r, people)) {
         return false;
+      }
       final scheduled = reservations
           .where((p) => day(p.start) != day(start))
           .expand(
@@ -246,11 +251,13 @@ class FlexiblePlanner {
     }).toList();
     var visits = 0;
     bool search(int index) {
-      if (index == prefs.days)
+      if (index == prefs.days) {
         return anchors.every((a) => chosen.any((r) => r.id == a.id));
+      }
       if (anchors.where((a) => !chosen.any((r) => r.id == a.id)).length >
-          prefs.days - index)
+          prefs.days - index) {
         return false;
+      }
       if (++visits > 200000) return false;
       final date = day(start).add(Duration(days: index));
       final counts = weeklyCounts(
@@ -329,10 +336,11 @@ class FlexiblePlanner {
       return false;
     }
 
-    if (!search(0))
+    if (!search(0)) {
       throw const FormatException(
         'No menu fits these dates, weekly protein limits, family dislikes and cooldowns. Existing menus and cooked dinners use this week’s allowance. Adjust limits or add recipes.',
       );
+    }
     return chosen;
   }
 }
