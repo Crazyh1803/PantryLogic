@@ -7,6 +7,7 @@ extension _HomeFeatures on _HomeState {
     await db!.setSetting('servings', '$servings');
     await db!.setSetting('model', modelField.text.trim());
     await db!.setSetting('profile', profileField.text);
+    appThemeMode.value = prefs.darkMode ? ThemeMode.dark : ThemeMode.light;
     message('Settings saved.');
   }
 
@@ -41,7 +42,7 @@ extension _HomeFeatures on _HomeState {
       onPressed: () => openLink('https://buymeacoffee.com/AppsbyDan'),
       child: const Text(
         'Enjoying Pantry Logic? Buy Dan a coffee',
-        style: TextStyle(fontSize: 12, color: Colors.black54),
+        style: TextStyle(fontSize: 12),
       ),
     ),
   );
@@ -156,6 +157,19 @@ extension _HomeFeatures on _HomeState {
 
   Widget advancedSettings() => Column(
     children: [
+      Card(
+        child: SwitchListTile(
+          title: const Text('Dark mode'),
+          subtitle: const Text(
+            'Use a darker color scheme throughout Pantry Logic.',
+          ),
+          value: prefs.darkMode,
+          onChanged: (value) => updateFeatures(() {
+            prefs.darkMode = value;
+            appThemeMode.value = value ? ThemeMode.dark : ThemeMode.light;
+          }),
+        ),
+      ),
       Padding(
         padding: const EdgeInsets.only(bottom: 16),
         child: FilledButton.icon(
@@ -1037,10 +1051,27 @@ extension _HomeFeatures on _HomeState {
       );
       final limit = prefs.weeklyLimits[recipe.protein];
       if (limit != null && (counts[recipe.protein] ?? 0) >= limit) {
-        message(
-          'The ${recipe.protein} allowance for this Monday–Sunday week is already used. Adjust the limit in Settings to add another.',
+        if (!mounted) return;
+        final override = await showDialog<bool>(
+          context: context,
+          builder: (c) => AlertDialog(
+            title: const Text('Weekly protein allowance reached'),
+            content: Text(
+              'This week already has ${counts[recipe.protein] ?? 0} ${recipe.protein} dinner${(counts[recipe.protein] ?? 0) == 1 ? '' : 's'} (limit $limit). Keep this replacement anyway?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(c, true),
+                child: const Text('Use anyway'),
+              ),
+            ],
+          ),
         );
-        return;
+        if (override != true) return;
       }
     }
 

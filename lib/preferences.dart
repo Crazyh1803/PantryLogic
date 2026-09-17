@@ -32,6 +32,7 @@ class Preferences {
     'other': null,
   };
   bool fallback = false;
+  bool darkMode = false;
   List<String> cadence = [
     'chicken',
     'flexible',
@@ -48,10 +49,7 @@ class Preferences {
       : r.cooldownDays;
   String slot(DateTime date) => 'flexible';
   String context(List<String> ids) =>
-      'Region: $region. Frequent stores: $stores. Available cooking equipment: $equipment. ${family
-          .where((m) => ids.contains(m.id))
-          .map((m) => '${m.name}: likes ${m.likes}; dislikes ${m.dislikes}.')
-          .join(' ')}';
+      'Region: $region. Frequent stores: $stores. Available cooking equipment: $equipment. ${family.where((m) => ids.contains(m.id)).map((m) => '${m.name}: likes ${m.likes}; dislikes ${m.dislikes}.').join(' ')}';
   bool accepts(Recipe r, List<String> ids) {
     final names = r.ingredients.map((i) => normalized(i.name)).join(' ');
     return !family
@@ -76,6 +74,7 @@ class Preferences {
     'weeklyLimits': weeklyLimits,
     'provider': provider,
     'fallback': fallback,
+    'darkMode': darkMode,
     'cadence': cadence,
     'aisleOrder': aisleOrder,
     'family': family.map((m) => m.toJson()).toList(),
@@ -106,6 +105,7 @@ class Preferences {
     }
     p.provider = j['provider'] ?? 'Gemini';
     p.fallback = j['fallback'] ?? false;
+    p.darkMode = j['darkMode'] == true;
     p.cadence = List<String>.from(j['cadence'] ?? p.cadence);
     p.aisleOrder = List<String>.from(j['aisleOrder'] ?? p.aisleOrder);
     p.family = (j['family'] as List? ?? [])

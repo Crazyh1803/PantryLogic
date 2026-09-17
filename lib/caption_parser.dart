@@ -84,7 +84,9 @@ Recipe? parseCaption(String source) {
       ? 'beef'
       : RegExp(r'\bchicken\b').hasMatch(text)
       ? 'chicken'
-      : RegExp(r'fish|salmon|cod|tuna').hasMatch(text)
+      : RegExp(
+          r'fish|salmon|cod|tuna|shrimp|prawn|prawns|crab|lobster|mussels?|clams?|scallops?|anchov(?:y|ies)|sardines?|mackerel|trout|tilapia|haddock|hake|sea ?bass|seafood',
+        ).hasMatch(text)
       ? 'fish'
       : RegExp(r'pork|lamb|turkey').hasMatch(text)
       ? 'other'

@@ -25,6 +25,7 @@ part 'features/recipes/presentation/recipe_ingest_view.dart';
 const ink = Color(0xFF243A30);
 const cream = Color(0xFFF7F6EF);
 const accent = Color(0xFFDBE8B7);
+final appThemeMode = ValueNotifier<ThemeMode>(ThemeMode.light);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,31 +35,63 @@ Future<void> main() async {
 class PantryLogicApp extends StatelessWidget {
   const PantryLogicApp({super.key});
   @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: 'Pantry Logic',
-    debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      useMaterial3: true,
-      colorScheme: ColorScheme.fromSeed(seedColor: ink, surface: cream),
-      scaffoldBackgroundColor: cream,
-      appBarTheme: const AppBarTheme(
-        backgroundColor: cream,
-        foregroundColor: ink,
-        centerTitle: false,
+  Widget build(BuildContext context) => ValueListenableBuilder<ThemeMode>(
+    valueListenable: appThemeMode,
+    builder: (context, mode, _) => MaterialApp(
+      title: 'Pantry Logic',
+      debugShowCheckedModeBanner: false,
+      themeMode: mode,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: ink, surface: cream),
+        scaffoldBackgroundColor: cream,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: cream,
+          foregroundColor: ink,
+          centerTitle: false,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        cardTheme: CardThemeData(
+          elevation: 0,
+          color: Colors.white,
+          margin: const EdgeInsets.only(bottom: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
       ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: Colors.white,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+      darkTheme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: accent,
+          brightness: Brightness.dark,
+        ),
+        scaffoldBackgroundColor: const Color(0xFF101512),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF101512),
+          foregroundColor: Colors.white,
+          centerTitle: false,
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Color(0xFF1B241E),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        cardTheme: CardThemeData(
+          elevation: 0,
+          color: Color(0xFF1B241E),
+          margin: const EdgeInsets.only(bottom: 12),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+        ),
       ),
-      cardTheme: CardThemeData(
-        elevation: 0,
-        color: Colors.white,
-        margin: const EdgeInsets.only(bottom: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      ),
+      home: const Home(),
     ),
-    home: const Home(),
   );
 }
 
@@ -141,6 +174,7 @@ class _HomeState extends State<Home> {
       modelField.text = await db!.setting('model') ?? 'gemini-flash-latest';
       profileField.text = await db!.setting('profile') ?? '';
       prefs = Preferences.decode(await db!.setting('preferences'));
+      appThemeMode.value = prefs.darkMode ? ThemeMode.dark : ThemeMode.light;
       try {
         keyField.text = await secure.read(key: 'gemini_key') ?? '';
       } catch (_) {
@@ -257,6 +291,62 @@ class _HomeState extends State<Home> {
     }
   }
 
+  String recipeShareText(Recipe recipe) {
+    final buffer = StringBuffer()
+      ..writeln(recipe.title)
+      ..writeln(
+        '${recipe.isSide ? 'Side dish' : recipe.protein} • ${recipe.servings} servings',
+      )
+      ..writeln()
+      ..writeln('Ingredients');
+    for (final ingredient in recipe.ingredients) {
+      buffer.writeln('- ${displayAmount(ingredient)} ${ingredient.name}');
+    }
+    buffer
+      ..writeln()
+      ..writeln('Method');
+    for (var i = 0; i < recipe.instructions.length; i++) {
+      buffer.writeln('${i + 1}. ${recipe.instructions[i]}');
+    }
+    if (recipe.sourceUrl != null && recipe.sourceUrl!.trim().isNotEmpty) {
+      buffer.writeln('\nSource: ${recipe.sourceUrl}');
+    }
+    return buffer.toString().trim();
+  }
+
+  Future<void> shareRecipe(Recipe recipe) async {
+    final text = recipeShareText(recipe);
+    try {
+      if (Platform.isAndroid) {
+        await const MethodChannel(
+          'pantry_logic/actions',
+        ).invokeMethod('shareRecipe', text);
+      } else {
+        await Clipboard.setData(ClipboardData(text: text));
+        message('Recipe copied to the clipboard.');
+      }
+    } catch (_) {
+      await Clipboard.setData(ClipboardData(text: text));
+      message('Recipe copied to the clipboard.');
+    }
+  }
+
+  Future<void> printRecipe(Recipe recipe) async {
+    final text = recipeShareText(recipe);
+    try {
+      if (Platform.isAndroid) {
+        await const MethodChannel(
+          'pantry_logic/actions',
+        ).invokeMethod('printRecipe', text);
+        return;
+      }
+    } catch (_) {
+      // Clipboard fallback keeps printing useful on desktop/web targets.
+    }
+    await Clipboard.setData(ClipboardData(text: text));
+    message('Recipe copied to the clipboard. Paste it into your print dialog.');
+  }
+
   Future<void> run(Future<void> Function() action) async {
     if (busy) return;
     setState(() => busy = true);
@@ -287,7 +377,7 @@ class _HomeState extends State<Home> {
     ])
       if (keyFor(p).text.trim().isNotEmpty) serviceFor(p),
   ]);
-  Future<void> edit([Recipe? recipe]) async {
+  Future<void> edit([Recipe? recipe, bool showSavedMessage = true]) async {
     final result = await Navigator.of(context).push<Recipe>(
       MaterialPageRoute(
         builder: (_) => RecipeEditor(
@@ -299,7 +389,25 @@ class _HomeState extends State<Home> {
         ),
       ),
     );
-    if (result != null) message('Recipe saved to your library.');
+    if (result != null && showSavedMessage) {
+      message('Recipe saved to your library.');
+    }
+    if (result != null &&
+        recipe != null &&
+        recipe.id == null &&
+        !showSavedMessage) {
+      setState(() {
+        urlField.clear();
+        raw.clear();
+        imageBytes = null;
+        imageName = null;
+        imageMime = null;
+        ingestMode = 'url';
+        showCaption = false;
+        ingestFailure = null;
+      });
+      captionFocus.unfocus();
+    }
   }
 
   Future<void> generate({bool allowAI = false}) =>
@@ -333,7 +441,7 @@ class _HomeState extends State<Home> {
     } finally {
       if (mounted) setState(() => busy = false);
     }
-    if (draft != null && mounted) await edit(draft);
+    if (draft != null && mounted) await edit(draft, false);
   }
 
   Future<void> pickImage() async {
@@ -374,17 +482,33 @@ class _HomeState extends State<Home> {
 
   Future<void> compose() async {
     String protein = 'chicken';
-    final chosen = await showDialog<String>(
+    final direction = TextEditingController();
+    final chosen = await showDialog<Map<String, String>>(
       context: context,
       builder: (context) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
           title: const Text('Compose a new dinner'),
-          content: DropdownButtonFormField<String>(
-            initialValue: protein,
-            items: proteins
-                .map((p) => DropdownMenuItem(value: p, child: Text(p)))
-                .toList(),
-            onChanged: (v) => update(() => protein = v!),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: protein,
+                items: proteins
+                    .map((p) => DropdownMenuItem(value: p, child: Text(p)))
+                    .toList(),
+                onChanged: (v) => update(() => protein = v!),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: direction,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Recipe direction (optional)',
+                  hintText: 'Pasta, Mexican, quick weeknight dinner…',
+                ),
+              ),
+            ],
           ),
           actions: [
             TextButton(
@@ -392,18 +516,25 @@ class _HomeState extends State<Home> {
               child: const Text('Cancel'),
             ),
             FilledButton(
-              onPressed: () => Navigator.pop(context, protein),
+              onPressed: () => Navigator.pop(context, {
+                'protein': protein,
+                'direction': direction.text.trim(),
+              }),
               child: const Text('Compose'),
             ),
           ],
         ),
       ),
     );
-    if (chosen == null) return;
+    final selected = chosen;
+    Future<void>.delayed(const Duration(seconds: 1), direction.dispose);
+    if (selected == null) return;
+    final chosenProtein = selected['protein']!;
+    final recipeDirection = selected['direction'] ?? '';
     Recipe? draft;
     await run(() async {
       draft = await ai.compose(
-        protein: chosen,
+        protein: chosenProtein,
         excludedTitles: recipes.map((r) => r.title).toList(),
         freshIngredients:
             active?.meals
@@ -414,7 +545,7 @@ class _HomeState extends State<Home> {
                 .toList() ??
             [],
         profile:
-            '${profileField.text}. ${prefs.context(prefs.family.map((m) => m.id).toList())}',
+            '${profileField.text}. ${prefs.context(prefs.family.map((m) => m.id).toList())}. ${recipeDirection.isEmpty ? '' : 'Recipe direction: $recipeDirection'}',
       );
     });
     if (draft != null && mounted) await edit(draft);
@@ -487,6 +618,16 @@ class _HomeState extends State<Home> {
               spacing: 8,
               runSpacing: 8,
               children: [
+                OutlinedButton.icon(
+                  onPressed: () => shareRecipe(recipe),
+                  icon: const Icon(Icons.share_outlined),
+                  label: const Text('Share'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => printRecipe(recipe),
+                  icon: const Icon(Icons.print_outlined),
+                  label: const Text('Print'),
+                ),
                 FilledButton.icon(
                   onPressed: () async {
                     final date = await showDatePicker(
@@ -688,8 +829,8 @@ class _HomeState extends State<Home> {
       children: [
         Text(
           eyebrow,
-          style: const TextStyle(
-            color: ink,
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.primary,
             fontSize: 11,
             letterSpacing: 2,
             fontWeight: FontWeight.w700,
@@ -698,18 +839,21 @@ class _HomeState extends State<Home> {
         const SizedBox(height: 8),
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 34,
             height: 1.1,
             fontWeight: FontWeight.w700,
-            color: ink,
+            color: Theme.of(context).colorScheme.onSurface,
             letterSpacing: -1,
           ),
         ),
         const SizedBox(height: 10),
         Text(
           subtitle,
-          style: const TextStyle(color: Color(0xFF677468), height: 1.5),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            height: 1.5,
+          ),
         ),
       ],
     ),
