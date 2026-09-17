@@ -19,6 +19,7 @@ import 'measurements.dart';
 import 'core/errors/ai_exception_handler.dart';
 import 'features/recipes/services/recipe_ingestion_service.dart';
 import 'side_seeds.dart';
+import 'privacy_policy.dart';
 part 'features.dart';
 part 'features/recipes/presentation/recipe_ingest_view.dart';
 

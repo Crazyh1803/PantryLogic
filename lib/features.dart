@@ -46,6 +46,34 @@ extension _HomeFeatures on _HomeState {
       ),
     ),
   );
+
+  Future<void> showPrivacyPolicy() => showDialog<void>(
+    context: context,
+    builder: (c) => AlertDialog(
+      title: const Text('Pantry Logic Privacy Policy'),
+      content: SizedBox(
+        width: 620,
+        child: SingleChildScrollView(
+          child: SelectableText(
+            'Effective: $privacyPolicyEffectiveDate\n\n$privacyPolicyText',
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(c);
+            openLink('https://github.com/Crazyh1803/PantryLogic/issues');
+          },
+          child: const Text('Privacy contact'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(c),
+          child: const Text('Done'),
+        ),
+      ],
+    ),
+  );
   Future<void> birthdayPrompt() async {
     final now = DateTime.now();
     if (!birthdayDue(
@@ -157,6 +185,17 @@ extension _HomeFeatures on _HomeState {
 
   Widget advancedSettings() => Column(
     children: [
+      Card(
+        child: ListTile(
+          leading: const Icon(Icons.privacy_tip_outlined),
+          title: const Text('Privacy Policy'),
+          subtitle: const Text(
+            'How local data, recipe imports, and optional AI requests are handled.',
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: showPrivacyPolicy,
+        ),
+      ),
       Card(
         child: SwitchListTile(
           title: const Text('Dark mode'),
