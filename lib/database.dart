@@ -130,6 +130,8 @@ class AppDatabase extends GeneratedDatabase {
       ],
     );
   }
+  Future<void> deletePlan(DateTime start) =>
+      customStatement('DELETE FROM weekly_plans WHERE start_date=?', [dateLabel(start)]);
 
   Future<String?> setting(String key) async => (await customSelect(
     'SELECT value FROM settings WHERE key=?',

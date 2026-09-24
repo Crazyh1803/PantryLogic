@@ -54,7 +54,25 @@ class GroceryAggregator {
     'ml': ('ml', 1),
   };
   static String key(Ingredient i) =>
-      '${normalized(i.name)}|${i.quantitySpecified ? normalized(i.unit) : 'unspecified'}';
+      '${canonicalName(i.name)}|${i.quantitySpecified ? normalized(i.unit) : 'unspecified'}';
+  static String canonicalName(String value) {
+    final n = normalized(value)
+        .replaceAll(RegExp(r'\b(fresh|large|small|medium|ripe)\b'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+    const aliases = {
+      'tomatoes': 'tomato',
+      'onions': 'onion',
+      'peppers': 'pepper',
+      'cucumbers': 'cucumber',
+      'carrots': 'carrot',
+      'potatoes': 'potato',
+      'mushrooms': 'mushroom',
+      'lemons': 'lemon',
+      'limes': 'lime',
+    };
+    return aliases[n] ?? n;
+  }
   static List<Ingredient> consolidate(List<Recipe> recipes, int servings) {
     final result = <String, Ingredient>{};
     for (final r in recipes) {
@@ -62,7 +80,7 @@ class GroceryAggregator {
         final unit = normalized(i.unit);
         final conversion = conversions[unit] ?? (unit, 1.0);
         final item = Ingredient(
-          name: normalized(i.name),
+          name: canonicalName(i.name),
           quantity: i.quantity * conversion.$2 * servings / r.servings,
           unit: conversion.$1,
           aisle: i.aisle,

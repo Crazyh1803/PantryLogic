@@ -129,6 +129,7 @@ class _HomeState extends State<Home> {
   MealPlan? active;
   int tab = 0, servings = 2;
   bool busy = false, ready = false;
+  bool showPurchased = false;
   String? startupError;
   String search = '', proteinFilter = 'all';
   final raw = TextEditingController(),
@@ -267,6 +268,27 @@ class _HomeState extends State<Home> {
       history = h;
       plans = p;
       active = p.where((p) => p.start == desired).firstOrNull ?? p.firstOrNull;
+    });
+  }
+
+  Future<void> deleteActiveWeek() async {
+    final plan = active;
+    if (plan == null) return;
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Delete this week?'),
+        content: Text('Remove all meals and the shopping list for the week of ${dateLabel(plan.start)}?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Delete week')),
+        ],
+      ),
+    );
+    if (yes != true) return;
+    await run(() async {
+      await db!.deletePlan(plan.start);
+      await reload();
     });
   }
 
@@ -484,6 +506,7 @@ class _HomeState extends State<Home> {
   Future<void> compose() async {
     String protein = 'chicken';
     final direction = TextEditingController();
+    final availableIngredients = TextEditingController();
     final chosen = await showDialog<Map<String, String>>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -509,6 +532,16 @@ class _HomeState extends State<Home> {
                   hintText: 'Pasta, Mexican, quick weeknight dinner…',
                 ),
               ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: availableIngredients,
+                minLines: 2,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Ingredients to use (optional)',
+                  hintText: 'Spinach, mushrooms, leftover rice…',
+                ),
+              ),
             ],
           ),
           actions: [
@@ -520,6 +553,7 @@ class _HomeState extends State<Home> {
               onPressed: () => Navigator.pop(context, {
                 'protein': protein,
                 'direction': direction.text.trim(),
+                'ingredients': availableIngredients.text.trim(),
               }),
               child: const Text('Compose'),
             ),
@@ -528,10 +562,14 @@ class _HomeState extends State<Home> {
       ),
     );
     final selected = chosen;
-    Future<void>.delayed(const Duration(seconds: 1), direction.dispose);
+    Future<void>.delayed(const Duration(seconds: 1), () {
+      direction.dispose();
+      availableIngredients.dispose();
+    });
     if (selected == null) return;
     final chosenProtein = selected['protein']!;
     final recipeDirection = selected['direction'] ?? '';
+    final ingredientRequest = selected['ingredients'] ?? '';
     Recipe? draft;
     await run(() async {
       draft = await ai.compose(
@@ -546,7 +584,7 @@ class _HomeState extends State<Home> {
                 .toList() ??
             [],
         profile:
-            '${profileField.text}. ${prefs.context(prefs.family.map((m) => m.id).toList())}. ${recipeDirection.isEmpty ? '' : 'Recipe direction: $recipeDirection'}',
+            '${profileField.text}. ${prefs.context(prefs.family.map((m) => m.id).toList())}. ${recipeDirection.isEmpty ? '' : 'Recipe direction: $recipeDirection'}. ${ingredientRequest.isEmpty ? '' : 'Use these available ingredients: $ingredientRequest'}',
       );
     });
     if (draft != null && mounted) await edit(draft);
@@ -933,6 +971,15 @@ class _HomeState extends State<Home> {
               setState(() => active = plans.firstWhere((p) => p.start == v)),
         ),
       ),
+    if (active != null)
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          onPressed: busy ? null : deleteActiveWeek,
+          icon: const Icon(Icons.delete_sweep_outlined),
+          label: const Text('Delete this week'),
+        ),
+      ),
     if (active == null)
       const Padding(
         padding: EdgeInsets.all(24),
@@ -1022,13 +1069,15 @@ class _HomeState extends State<Home> {
       }),
     if (active != null)
       Card(
-        color: const Color(0xFFEAF0DE),
+        color: Theme.of(context).brightness == Brightness.dark
+            ? Theme.of(context).colorScheme.surfaceContainerHighest
+            : const Color(0xFFEAF0DE),
         child: ExpansionTile(
-          title: const Text(
+          title: Text(
             'Use the fresh stuff',
-            style: TextStyle(fontWeight: FontWeight.w600),
+            style: TextStyle(fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
           ),
-          subtitle: const Text('Ingredient sharing & leftover reminders'),
+          subtitle: Text('Ingredient sharing & leftover reminders', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
           children: PlanningEngine.perishableNotes(active!.meals)
               .map(
                 (n) => ListTile(
@@ -1124,20 +1173,23 @@ class _HomeState extends State<Home> {
   }
 
   Widget groceries() {
-    final items = active == null
+    final allItems = active == null
         ? <Ingredient>[]
         : GroceryAggregator.consolidate(
             active!.shoppingRecipes,
             active!.servings,
           );
-    items.sort(
+    allItems.sort(
       (a, b) => prefs.aisleOrder
           .indexOf(a.aisle)
           .compareTo(prefs.aisleOrder.indexOf(b.aisle)),
     );
-    final checked = items
+    final checked = allItems
         .where((i) => active!.checked.contains(GroceryAggregator.key(i)))
         .length;
+    final items = showPurchased
+        ? allItems
+        : allItems.where((i) => !active!.checked.contains(GroceryAggregator.key(i))).toList();
     return page([
       heading(
         'ONE TRIP. EVERYTHING YOU NEED.',
@@ -1147,14 +1199,22 @@ class _HomeState extends State<Home> {
             : 'Week of ${dateLabel(active!.start)} · $checked of ${items.length} picked up',
       ),
       if (active != null) shoppingDatePicker(),
-      if (items.isNotEmpty) ...[
+      if (allItems.isNotEmpty) ...[
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: () => setState(() => showPurchased = !showPurchased),
+            icon: Icon(showPurchased ? Icons.visibility_off_outlined : Icons.visibility_outlined),
+            label: Text(showPurchased ? 'Hide purchased' : 'Show purchased ($checked)'),
+          ),
+        ),
         TextButton.icon(
           onPressed: () => alexaExport(items),
           icon: const Icon(Icons.ios_share),
           label: const Text('Export for Alexa / share'),
         ),
         LinearProgressIndicator(
-          value: checked / items.length,
+          value: allItems.isEmpty ? 0 : checked / allItems.length,
           minHeight: 6,
           borderRadius: BorderRadius.circular(8),
         ),

@@ -168,7 +168,7 @@ class GeminiDirectService implements AIService {
     required String profile,
   }) async {
     final recipe = await request(
-      'Compose one new $protein dinner. Household preferences: $profile. Do not repeat or rename these dishes: ${jsonEncode(excludedTitles)}. Prefer using these perishables: ${jsonEncode(freshIngredients)}.',
+      'Compose one new $protein dinner. Household preferences: $profile. Do not repeat, rename, imitate, or reuse the core concept of these dishes: ${jsonEncode(excludedTitles)}. Prefer using these ingredients: ${jsonEncode(freshIngredients)}.',
     );
     if (recipe.protein != protein ||
         excludedTitles.any((t) => normalized(t) == normalized(recipe.title))) {

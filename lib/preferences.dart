@@ -23,6 +23,7 @@ class Preferences {
       weightUnit = 'g',
       volumeUnit = 'ml';
   String provider = 'Gemini';
+  String cookingSkill = 'comfortable';
   String measurementSystem = 'metric', volumeStyle = 'ml';
   Map<String, int?> weeklyLimits = {
     'chicken': 2,
@@ -49,7 +50,7 @@ class Preferences {
       : r.cooldownDays;
   String slot(DateTime date) => 'flexible';
   String context(List<String> ids) =>
-      'Region: $region. Frequent stores: $stores. Available cooking equipment: $equipment. ${family.where((m) => ids.contains(m.id)).map((m) => '${m.name}: likes ${m.likes}; dislikes ${m.dislikes}.').join(' ')}';
+      'Region: $region. Frequent stores: $stores. Available cooking equipment: $equipment. Cooking skill: $cookingSkill. ${family.where((m) => ids.contains(m.id)).map((m) => '${m.name}: likes ${m.likes}; dislikes ${m.dislikes}.').join(' ')}';
   bool accepts(Recipe r, List<String> ids) {
     final names = r.ingredients.map((i) => normalized(i.name)).join(' ');
     return !family
@@ -73,6 +74,7 @@ class Preferences {
     'volumeStyle': volumeStyle,
     'weeklyLimits': weeklyLimits,
     'provider': provider,
+    'cookingSkill': cookingSkill,
     'fallback': fallback,
     'darkMode': darkMode,
     'cadence': cadence,
@@ -104,6 +106,7 @@ class Preferences {
       };
     }
     p.provider = j['provider'] ?? 'Gemini';
+    p.cookingSkill = j['cookingSkill'] ?? 'comfortable';
     p.fallback = j['fallback'] ?? false;
     p.darkMode = j['darkMode'] == true;
     p.cadence = List<String>.from(j['cadence'] ?? p.cadence);

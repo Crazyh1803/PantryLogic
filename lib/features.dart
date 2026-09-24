@@ -260,6 +260,21 @@ extension _HomeFeatures on _HomeState {
                 'Leave a recipe’s cooldown blank to use these defaults. You can explicitly override a cooldown when choosing a replacement.',
               ),
             ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: DropdownButtonFormField<String>(
+                initialValue: prefs.cookingSkill,
+                decoration: const InputDecoration(labelText: 'Cooking experience'),
+                items: const [
+                  DropdownMenuItem(value: 'beginner', child: Text('Zero experience')),
+                  DropdownMenuItem(value: 'learning', child: Text('Learning the basics')),
+                  DropdownMenuItem(value: 'comfortable', child: Text('Comfortable home cook')),
+                  DropdownMenuItem(value: 'advanced', child: Text('Advanced home cook')),
+                  DropdownMenuItem(value: 'master', child: Text('Master chef')),
+                ],
+                onChanged: (v) => updateFeatures(() => prefs.cookingSkill = v ?? 'comfortable'),
+              ),
+            ),
             const Padding(
               padding: EdgeInsets.all(12),
               child: Text(
@@ -1047,13 +1062,17 @@ extension _HomeFeatures on _HomeState {
     await run(() async {
       draft = await ai.compose(
         protein: side ? 'vegetarian' : plan.meals[index].protein,
-        excludedTitles: recipes.map((r) => r.title).toList(),
+        excludedTitles: [
+          ...recipes.map((r) => r.title),
+          plan.meals[index].title,
+          if (!side) ...plan.meals[index].ingredients.map((i) => i.name),
+        ],
         freshIngredients: plan.meals[index].ingredients
             .where((i) => i.isPerishable)
             .map((i) => i.name)
             .toList(),
         profile:
-            '${profileField.text}. ${prefs.context(plan.people)}. $note. ${side ? 'Create a side dish to complement ${plan.meals[index].title}.' : 'Replace ${plan.meals[index].title} with a substantially different dish.'}',
+            '${profileField.text}. ${prefs.context(plan.people)}. $note. ${side ? 'Create a side dish to complement ${plan.meals[index].title}.' : 'VETO the original concept of ${plan.meals[index].title}. Create a completely different meal format and technique; do not turn its filling, ingredients, or flavor profile into a crockpot version. The replacement must honor the user request first.'}',
       );
     });
     if (draft == null || !mounted) return;
