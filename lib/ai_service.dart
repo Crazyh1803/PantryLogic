@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:google_generative_ai/google_generative_ai.dart' as google;
 import 'models.dart';
+import 'grocery_aggregator.dart';
 import 'recipe_codec.dart';
 import 'features/recipes/services/recipe_ingestion_service.dart';
 import 'core/errors/ai_exception_handler.dart';
@@ -73,12 +74,75 @@ String providerError(
 
 abstract class AIService {
   Future<Recipe> parseRecipe(String text, {Uint8List? image, String? mimeType});
+  Future<List<Ingredient>> detectPantry(Uint8List image, {String? mimeType});
   Future<Recipe> compose({
     required String protein,
     required List<String> excludedTitles,
     required List<String> freshIngredients,
     required String profile,
+    List<String> pantryOnlyIngredients = const [],
   });
+}
+
+void validatePantryOnlyRecipe(Recipe recipe, List<String> pantryNames) {
+  if (pantryNames.isEmpty) return;
+  final allowed = pantryNames.map(GroceryAggregator.canonicalName).toSet();
+  const alwaysAllowed = {'water', 'salt'};
+  final unavailable =
+      recipe.ingredients
+          .map((item) => GroceryAggregator.canonicalName(item.name))
+          .where(
+            (name) =>
+                !alwaysAllowed.contains(name) &&
+                !allowed.contains(name) &&
+                !allowed.any(
+                  (pantryName) => ingredientNamesMatch(name, pantryName),
+                ),
+          )
+          .toSet()
+          .toList()
+        ..sort();
+  if (unavailable.isNotEmpty) {
+    throw FormatException(
+      'The generated recipe used ingredients outside your pantry: ${unavailable.join(', ')}.',
+    );
+  }
+}
+
+bool ingredientNamesMatch(String first, String second) {
+  final a = GroceryAggregator.canonicalName(first).split(' ').toSet();
+  final b = GroceryAggregator.canonicalName(second).split(' ').toSet();
+  if (a.containsAll(b) || b.containsAll(a)) return true;
+  const proteinFamilies = [
+    {'beef', 'steak'},
+    {'fish', 'salmon', 'tuna', 'cod', 'trout', 'tilapia', 'haddock', 'hake'},
+    {
+      'shellfish',
+      'shrimp',
+      'prawn',
+      'crab',
+      'lobster',
+      'mussel',
+      'clam',
+      'scallop',
+    },
+  ];
+  return proteinFamilies.any(
+    (family) =>
+        a.intersection(family).isNotEmpty && b.intersection(family).isNotEmpty,
+  );
+}
+
+bool pantrySupportsProtein(List<String> pantryNames, String protein) {
+  final text = normalized(pantryNames.join(' '));
+  return switch (protein) {
+    'chicken' => RegExp(r'\bchicken\b').hasMatch(text),
+    'beef' => RegExp(r'\b(?:beef|steak)\b').hasMatch(text),
+    'fish' => RegExp(
+      r'\b(?:fish|salmon|tuna|cod|trout|tilapia|haddock|hake|shrimp|prawn|crab|lobster|mussel|clam|scallop)\b',
+    ).hasMatch(text),
+    _ => true,
+  };
 }
 
 class GeminiDirectService implements AIService {
@@ -161,14 +225,28 @@ class GeminiDirectService implements AIService {
     mimeType: mimeType,
   );
   @override
+  Future<List<Ingredient>> detectPantry(
+    Uint8List image, {
+    String? mimeType,
+  }) async {
+    final result = await request(
+      'Identify only food ingredients clearly visible in this pantry photo. Return a recipe titled "Pantry scan", protein "other", servings 1, one instruction "Review detected items", and put every visible food item in ingredients. Use a package quantity and unit only when clearly readable; otherwise use quantity 0 and unit "as needed". Do not include shelves, appliances, containers, or guessed hidden contents.',
+      image: image,
+      mimeType: mimeType,
+    );
+    return result.ingredients;
+  }
+
+  @override
   Future<Recipe> compose({
     required String protein,
     required List<String> excludedTitles,
     required List<String> freshIngredients,
     required String profile,
+    List<String> pantryOnlyIngredients = const [],
   }) async {
     final recipe = await request(
-      'Compose one new $protein dinner. Household preferences: $profile. Do not repeat, rename, imitate, or reuse the core concept of these dishes: ${jsonEncode(excludedTitles)}. Prefer using these ingredients: ${jsonEncode(freshIngredients)}.',
+      'Compose one new $protein dinner. Household preferences: $profile. Do not repeat, rename, imitate, or reuse the core concept of these dishes: ${jsonEncode(excludedTitles)}. Prefer using these ingredients: ${jsonEncode(freshIngredients)}.${pantryOnlyIngredients.isEmpty ? '' : ' STRICT REQUIREMENT: every ingredient, including oils, seasonings, and garnishes, must come from this pantry list and no other ingredient may be used: ${jsonEncode(pantryOnlyIngredients)}. Water and salt are the only exceptions and may be used even when absent from the list.'}',
     );
     if (recipe.protein != protein ||
         excludedTitles.any((t) => normalized(t) == normalized(recipe.title))) {
@@ -176,6 +254,7 @@ class GeminiDirectService implements AIService {
         'Generated recipe broke the requested constraints. Please retry.',
       );
     }
+    validatePantryOnlyRecipe(recipe, pantryOnlyIngredients);
     return recipe;
   }
 }

@@ -21,6 +21,14 @@ Future<void> main() async {
   final copy = AppDatabase(NativeDatabase.memory());
   try {
     final recipes = <Recipe>[];
+    await db.savePantryItem(
+      PantryItem(
+        name: 'olive oil',
+        quantity: 0,
+        unit: 'as needed',
+        quantitySpecified: false,
+      ),
+    );
     for (final r in seedRecipes()) {
       recipes.add(await db.saveRecipe(r));
     }
@@ -97,6 +105,9 @@ Future<void> main() async {
       throw StateError('Preferences restore');
     }
     if ((await copy.history()).length != 1) throw StateError('History restore');
+    if ((await copy.pantryItems()).single.name != 'olive oil') {
+      throw StateError('Pantry restore');
+    }
     await db.deleteRecipe(recipes.first.id!);
     if ((await db.history()).isNotEmpty) {
       throw StateError('Foreign key cascade');

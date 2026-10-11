@@ -303,17 +303,39 @@ class FallbackService implements AIService {
     String? mimeType,
   }) => attempt((s) => s.parseRecipe(text, image: image, mimeType: mimeType));
   @override
+  Future<List<Ingredient>> detectPantry(
+    Uint8List image, {
+    String? mimeType,
+  }) async {
+    final errors = <Exception>[];
+    for (final service in services) {
+      try {
+        return await service.detectPantry(image, mimeType: mimeType);
+      } on Exception catch (error) {
+        errors.add(error);
+      }
+    }
+    throw AiFallbackException(
+      errors.isEmpty
+          ? const FormatException('Add an API key in Settings first.')
+          : errors.first,
+    );
+  }
+
+  @override
   Future<Recipe> compose({
     required String protein,
     required List<String> excludedTitles,
     required List<String> freshIngredients,
     required String profile,
+    List<String> pantryOnlyIngredients = const [],
   }) => attempt(
     (s) => s.compose(
       protein: protein,
       excludedTitles: excludedTitles,
       freshIngredients: freshIngredients,
       profile: profile,
+      pantryOnlyIngredients: pantryOnlyIngredients,
     ),
   );
 }

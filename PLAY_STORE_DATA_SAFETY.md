@@ -17,7 +17,7 @@ All items below are optional and used for app functionality. They are sent only 
 
 | Play category | Data type | Why it may be transmitted |
 |---|---|---|
-| Photos and videos | Photos | A recipe screenshot selected for AI extraction. |
+| Photos and videos | Photos | A recipe screenshot or captured/selected pantry photo sent for AI extraction. |
 | Files and docs | Files and docs | A user-selected recipe image or imported content, depending on Play's classification. Avoid double-counting the same image if classified as Photos. |
 | App activity | Other user-generated content | Recipe captions, notes, recipes, ingredients, prompts, household preferences, and planning context sent for AI processing. |
 | Personal info | Name | Household-member names may be included in an AI planning or recipe request. |
@@ -53,4 +53,3 @@ Recipes, grocery lists, meal plans, history, household profiles, preferences, an
 5. Declare **No** for ads while the app remains ad-free.
 6. Select a general-audience target only if that matches the intended audience; the app is not designed for children.
 7. Replace the public GitHub issue contact with a dedicated privacy email if available.
-

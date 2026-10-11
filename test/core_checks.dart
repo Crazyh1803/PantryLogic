@@ -112,6 +112,49 @@ void main() {
     items.any((i) => i.name == 'rice' && i.unit == 'cup' && i.quantity == 2),
     'incompatible units stay separate',
   );
+  final pantryAdjusted = GroceryAggregator.withoutPantry(items, [
+    PantryItem(name: 'rice', quantity: .5, unit: 'kg'),
+    PantryItem(
+      name: 'olive oil',
+      quantity: 0,
+      unit: 'as needed',
+      quantitySpecified: false,
+    ),
+  ]);
+  check(
+    pantryAdjusted
+            .firstWhere((i) => i.name == 'rice' && i.unit == 'g')
+            .quantity ==
+        1000,
+    'compatible pantry quantities subtract from groceries',
+  );
+  check(
+    pantryAdjusted.any((i) => i.name == 'rice' && i.unit == 'cup') &&
+        pantryAdjusted.any((i) => i.name == 'olive oil'),
+    'incompatible and unmeasured pantry stock cannot erase measured needs',
+  );
+  final unspecified = GroceryAggregator.withoutPantry(
+    [
+      Ingredient(
+        name: 'salt',
+        quantity: 0,
+        unit: 'as needed',
+        quantitySpecified: false,
+      ),
+    ],
+    [
+      PantryItem(
+        name: 'salt',
+        quantity: 0,
+        unit: 'as needed',
+        quantitySpecified: false,
+      ),
+    ],
+  );
+  check(
+    unspecified.isEmpty,
+    'unmeasured pantry staples cover unmeasured needs',
+  );
   check(
     Recipe.fromJson(recipe.toJson()).title == recipe.title,
     'recipe JSON round trip',

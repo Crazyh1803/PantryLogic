@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'database.dart';
 import 'models.dart';
@@ -22,6 +23,7 @@ import 'side_seeds.dart';
 import 'privacy_policy.dart';
 part 'features.dart';
 part 'features/recipes/presentation/recipe_ingest_view.dart';
+part 'features/pantry/presentation/pantry_view.dart';
 
 const ink = Color(0xFF243A30);
 const cream = Color(0xFFF7F6EF);
@@ -109,6 +111,7 @@ class _HomeState extends State<Home> {
 
   Preferences prefs = Preferences();
   String settingsSection = 'general';
+  String shopSection = 'shopping';
   String ingestMode = 'url';
   bool showCaption = false;
   final urlField = TextEditingController();
@@ -124,6 +127,7 @@ class _HomeState extends State<Home> {
 
   AppDatabase? db;
   List<Recipe> recipes = [];
+  List<PantryItem> pantryItems = [];
   List<CookedMeal> history = [];
   List<MealPlan> plans = [];
   MealPlan? active;
@@ -196,6 +200,11 @@ class _HomeState extends State<Home> {
       }
       await reload();
       if (mounted) setState(() => ready = true);
+      if (mounted && Platform.isAndroid) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          recoverLostPantryPhoto();
+        });
+      }
       if (mounted) {
         WidgetsBinding.instance.addPostFrameCallback((_) => birthdayPrompt());
       }
@@ -259,12 +268,14 @@ class _HomeState extends State<Home> {
 
   Future<void> reload({DateTime? select}) async {
     final r = await db!.recipes(),
+        inventory = await db!.pantryItems(),
         h = await db!.history(),
         p = await db!.plans();
     final desired = select ?? active?.start;
     if (!mounted) return;
     setState(() {
       recipes = r;
+      pantryItems = inventory;
       history = h;
       plans = p;
       active = p.where((p) => p.start == desired).firstOrNull ?? p.firstOrNull;
@@ -278,10 +289,18 @@ class _HomeState extends State<Home> {
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Delete this week?'),
-        content: Text('Remove all meals and the shopping list for the week of ${dateLabel(plan.start)}?'),
+        content: Text(
+          'Remove all meals and the shopping list for the week of ${dateLabel(plan.start)}?',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Delete week')),
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Delete week'),
+          ),
         ],
       ),
     );
@@ -505,6 +524,7 @@ class _HomeState extends State<Home> {
 
   Future<void> compose() async {
     String protein = 'chicken';
+    var pantryOnly = false;
     final direction = TextEditingController();
     final availableIngredients = TextEditingController();
     final chosen = await showDialog<Map<String, String>>(
@@ -532,6 +552,20 @@ class _HomeState extends State<Home> {
                   hintText: 'Pasta, Mexican, quick weeknight dinner…',
                 ),
               ),
+              const SizedBox(height: 8),
+              CheckboxListTile(
+                contentPadding: EdgeInsets.zero,
+                value: pantryOnly,
+                onChanged: pantryItems.isEmpty
+                    ? null
+                    : (value) => update(() => pantryOnly = value ?? false),
+                title: const Text('Use only pantry ingredients'),
+                subtitle: Text(
+                  pantryItems.isEmpty
+                      ? 'Add pantry items first.'
+                      : '${pantryItems.length} pantry items available · water and salt allowed',
+                ),
+              ),
               const SizedBox(height: 12),
               TextField(
                 controller: availableIngredients,
@@ -554,6 +588,7 @@ class _HomeState extends State<Home> {
                 'protein': protein,
                 'direction': direction.text.trim(),
                 'ingredients': availableIngredients.text.trim(),
+                'pantry_only': pantryOnly.toString(),
               }),
               child: const Text('Compose'),
             ),
@@ -570,6 +605,15 @@ class _HomeState extends State<Home> {
     final chosenProtein = selected['protein']!;
     final recipeDirection = selected['direction'] ?? '';
     final ingredientRequest = selected['ingredients'] ?? '';
+    final selectedPantryOnly = selected['pantry_only'] == 'true';
+    final pantryNames = pantryItems.map((item) => item.name).toSet().toList();
+    if (selectedPantryOnly &&
+        !pantrySupportsProtein(pantryNames, chosenProtein)) {
+      message(
+        'Add a $chosenProtein ingredient to your pantry or choose another protein.',
+      );
+      return;
+    }
     Recipe? draft;
     await run(() async {
       draft = await ai.compose(
@@ -585,6 +629,7 @@ class _HomeState extends State<Home> {
             [],
         profile:
             '${profileField.text}. ${prefs.context(prefs.family.map((m) => m.id).toList())}. ${recipeDirection.isEmpty ? '' : 'Recipe direction: $recipeDirection'}. ${ingredientRequest.isEmpty ? '' : 'Use these available ingredients: $ingredientRequest'}',
+        pantryOnlyIngredients: selectedPantryOnly ? pantryNames : const [],
       );
     });
     if (draft != null && mounted) await edit(draft);
@@ -756,7 +801,7 @@ class _HomeState extends State<Home> {
     if (!ready) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final bodies = [week, library, groceries, importing, settings];
+    final bodies = [week, library, shop, importing, settings];
     return Scaffold(
       appBar: AppBar(
         title: const FittedBox(
@@ -1075,9 +1120,17 @@ class _HomeState extends State<Home> {
         child: ExpansionTile(
           title: Text(
             'Use the fresh stuff',
-            style: TextStyle(fontWeight: FontWeight.w600, color: Theme.of(context).colorScheme.onSurface),
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
-          subtitle: Text('Ingredient sharing & leftover reminders', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          subtitle: Text(
+            'Ingredient sharing & leftover reminders',
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
           children: PlanningEngine.perishableNotes(active!.meals)
               .map(
                 (n) => ListTile(
@@ -1175,9 +1228,10 @@ class _HomeState extends State<Home> {
   Widget groceries() {
     final allItems = active == null
         ? <Ingredient>[]
-        : GroceryAggregator.consolidate(
+        : GroceryAggregator.consolidateWithoutPantry(
             active!.shoppingRecipes,
             active!.servings,
+            pantryItems,
           );
     allItems.sort(
       (a, b) => prefs.aisleOrder
@@ -1189,8 +1243,12 @@ class _HomeState extends State<Home> {
         .length;
     final items = showPurchased
         ? allItems
-        : allItems.where((i) => !active!.checked.contains(GroceryAggregator.key(i))).toList();
+        : allItems
+              .where((i) => !active!.checked.contains(GroceryAggregator.key(i)))
+              .toList();
     return page([
+      shopSwitcher(),
+      const SizedBox(height: 20),
       heading(
         'ONE TRIP. EVERYTHING YOU NEED.',
         'The shopping list.',
@@ -1204,8 +1262,14 @@ class _HomeState extends State<Home> {
           alignment: Alignment.centerRight,
           child: TextButton.icon(
             onPressed: () => setState(() => showPurchased = !showPurchased),
-            icon: Icon(showPurchased ? Icons.visibility_off_outlined : Icons.visibility_outlined),
-            label: Text(showPurchased ? 'Hide purchased' : 'Show purchased ($checked)'),
+            icon: Icon(
+              showPurchased
+                  ? Icons.visibility_off_outlined
+                  : Icons.visibility_outlined,
+            ),
+            label: Text(
+              showPurchased ? 'Hide purchased' : 'Show purchased ($checked)',
+            ),
           ),
         ),
         TextButton.icon(
