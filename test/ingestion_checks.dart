@@ -46,11 +46,16 @@ class SpyAI implements AIService {
   }
 
   @override
+  Future<List<Ingredient>> detectPantry(Uint8List image, {String? mimeType}) =>
+      throw UnimplementedError();
+
+  @override
   Future<Recipe> compose({
     required String protein,
     required List<String> excludedTitles,
     required List<String> freshIngredients,
     required String profile,
+    List<String> pantryOnlyIngredients = const [],
   }) => throw UnimplementedError();
 }
 

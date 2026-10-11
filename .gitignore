@@ -50,3 +50,7 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Local agent workflow output (plans remain tracked).
+/.ai/escalations/
+/.ai/reviews/

@@ -14,11 +14,13 @@ The configured Flutter SDK is ../../work/toolchain/flutter and Android SDK is ..
 
 Install ../PantryLogic-debug.apk. Its new application ID installs separately from Hearth. Export a backup from the old app, restore it in Pantry Logic, and re-enter AI keys/model selections. Do not remove the old app until you have checked the restored data. API keys are excluded from backups; the backup format remains compatible.
 
+Restoring a backup merges it with local data. Matching pantry names and units use the quantity from the backup.
+
 See ../PantryLogic-update-notes.md for rename coverage, migration steps and verification. The source archive is ../PantryLogic-source.zip.
 
 ## Features
 
-Recipes, planning and shopping lists are stored locally. Import accepts URL, text/captions and screenshots with combined notes. Structured captions can import without a key; other text/images use Gemini, OpenAI, Claude or Grok. Optional fallback sends inputs to configured backup providers. All AI configuration is under Settings > AI.
+Recipes, pantry inventory, planning and shopping lists are stored locally. Pantry items are deducted from shopping lists, and AI composition can be restricted to pantry ingredients. Pantry photos can be reviewed and added using Gemini, OpenAI, Claude or Grok. Recipe import accepts URL, text/captions and screenshots with combined notes. Optional fallback sends inputs to configured backup providers. All AI configuration is under Settings > AI.
 
 Menus span 1-14 days with selectable shopping dates, family participants and guests. Monday-Sunday protein allowances apply across separate menus. Settings also controls cooldowns, sides, equipment, region/stores, aisle order and metric/US/UK measurements with smart cups/spoons. Inaccessible social video still requires a caption or screenshot.
 

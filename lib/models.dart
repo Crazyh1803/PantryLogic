@@ -48,6 +48,57 @@ class Ingredient {
   );
 }
 
+class PantryItem {
+  final int? id;
+  final String name, unit;
+  final double quantity;
+  final bool quantitySpecified;
+
+  PantryItem({
+    this.id,
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    this.quantitySpecified = true,
+  }) {
+    if (name.trim().isEmpty ||
+        unit.trim().isEmpty ||
+        !quantity.isFinite ||
+        quantity < 0 ||
+        (quantitySpecified && quantity == 0)) {
+      throw const FormatException(
+        'Pantry items need a name and, when supplied, a positive quantity.',
+      );
+    }
+  }
+
+  Ingredient get ingredient => Ingredient(
+    name: name,
+    quantity: quantity,
+    unit: unit,
+    quantitySpecified: quantitySpecified,
+  );
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'quantity': quantity,
+    'unit': unit,
+    'quantity_specified': quantitySpecified,
+  };
+
+  factory PantryItem.fromJson(Map<String, dynamic> j) => PantryItem(
+    id: j['id'] as int?,
+    name: j['name'] as String,
+    quantity: (j['quantity'] as num?)?.toDouble() ?? 0,
+    unit: j['unit'] as String? ?? 'as needed',
+    quantitySpecified: j['quantity_specified'] as bool? ?? true,
+  );
+
+  PantryItem withId(int value) =>
+      PantryItem.fromJson({...toJson(), 'id': value});
+}
+
 class Recipe {
   final int? id;
   final String title, protein;

@@ -11,6 +11,9 @@ import 'preferences.dart';
 // Drift custom queries keep the schema reviewable without generated source.
 class AppDatabase extends GeneratedDatabase {
   AppDatabase(super.executor);
+  Future<void> createPantryTable() => customStatement(
+    'CREATE TABLE pantry_items (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, name_key TEXT NOT NULL, quantity REAL NULL, unit TEXT NOT NULL, UNIQUE(name_key,unit))',
+  );
   static Future<AppDatabase> open() async {
     final dir = await getApplicationSupportDirectory();
     return AppDatabase(
@@ -21,7 +24,7 @@ class AppDatabase extends GeneratedDatabase {
   }
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
   @override
   Iterable<TableInfo<Table, Object?>> get allTables => const [];
   @override
@@ -41,6 +44,12 @@ class AppDatabase extends GeneratedDatabase {
       await customStatement(
         'CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
       );
+      await createPantryTable();
+    },
+    onUpgrade: (m, from, to) async {
+      if (from < 2) {
+        await createPantryTable();
+      }
     },
     beforeOpen: (_) async {
       await customStatement('PRAGMA foreign_keys = ON');
@@ -80,6 +89,78 @@ class AppDatabase extends GeneratedDatabase {
 
   Future<void> deleteRecipe(int id) =>
       customStatement('DELETE FROM recipes WHERE id=?', [id]);
+  Future<List<PantryItem>> pantryItems() async =>
+      (await customSelect(
+        'SELECT id,name,quantity,unit FROM pantry_items ORDER BY name_key,unit',
+      ).get()).map((row) {
+        final quantity = row.readNullable<double>('quantity');
+        return PantryItem(
+          id: row.read<int>('id'),
+          name: row.read<String>('name'),
+          quantity: quantity ?? 0,
+          unit: row.read<String>('unit'),
+          quantitySpecified: quantity != null,
+        );
+      }).toList();
+  Future<PantryItem> savePantryItem(PantryItem item) async {
+    final nameKey = GroceryAggregator.canonicalName(item.name);
+    final unitKey = normalized(item.unit);
+    if (item.id == null) {
+      final existing = await customSelect(
+        'SELECT id FROM pantry_items WHERE name_key=? AND unit=?',
+        variables: [Variable(nameKey), Variable(unitKey)],
+      ).getSingleOrNull();
+      if (existing != null) {
+        return updatePantryItem(existing.read<int>('id'), item);
+      }
+      final variables = [
+        Variable(item.name.trim()),
+        Variable(nameKey),
+        if (item.quantitySpecified) Variable(item.quantity),
+        Variable(unitKey),
+      ];
+      final id = await customInsert(
+        item.quantitySpecified
+            ? 'INSERT INTO pantry_items(name,name_key,quantity,unit) VALUES (?,?,?,?)'
+            : 'INSERT INTO pantry_items(name,name_key,unit) VALUES (?,?,?)',
+        variables: variables,
+      );
+      return item.withId(id);
+    }
+    final collision = await customSelect(
+      'SELECT id FROM pantry_items WHERE name_key=? AND unit=? AND id<>?',
+      variables: [Variable(nameKey), Variable(unitKey), Variable(item.id!)],
+    ).getSingleOrNull();
+    if (collision != null) {
+      final targetId = collision.read<int>('id');
+      return transaction(() async {
+        final saved = await updatePantryItem(targetId, item);
+        await deletePantryItem(item.id!);
+        return saved;
+      });
+    }
+    return updatePantryItem(item.id!, item);
+  }
+
+  Future<PantryItem> updatePantryItem(int id, PantryItem item) async {
+    final variables = [
+      Variable(item.name.trim()),
+      Variable(GroceryAggregator.canonicalName(item.name)),
+      if (item.quantitySpecified) Variable(item.quantity),
+      Variable(normalized(item.unit)),
+      Variable(id),
+    ];
+    await customUpdate(
+      item.quantitySpecified
+          ? 'UPDATE pantry_items SET name=?,name_key=?,quantity=?,unit=? WHERE id=?'
+          : 'UPDATE pantry_items SET name=?,name_key=?,quantity=NULL,unit=? WHERE id=?',
+      variables: variables,
+    );
+    return item.withId(id);
+  }
+
+  Future<void> deletePantryItem(int id) =>
+      customStatement('DELETE FROM pantry_items WHERE id=?', [id]);
   Future<List<CookedMeal>> history() async =>
       (await customSelect(
             'SELECT * FROM meal_history ORDER BY cooked_date DESC,id DESC',
@@ -130,8 +211,11 @@ class AppDatabase extends GeneratedDatabase {
       ],
     );
   }
-  Future<void> deletePlan(DateTime start) =>
-      customStatement('DELETE FROM weekly_plans WHERE start_date=?', [dateLabel(start)]);
+
+  Future<void> deletePlan(DateTime start) => customStatement(
+    'DELETE FROM weekly_plans WHERE start_date=?',
+    [dateLabel(start)],
+  );
 
   Future<String?> setting(String key) async => (await customSelect(
     'SELECT value FROM settings WHERE key=?',
@@ -142,10 +226,11 @@ class AppDatabase extends GeneratedDatabase {
     [key, value],
   );
   Future<String> export() async => const JsonEncoder.withIndent('  ').convert({
-    'version': 1,
+    'version': 2,
     'preferences': await setting('preferences'),
     'profile': await setting('profile'),
     'servings': await setting('servings'),
+    'pantry': (await pantryItems()).map((item) => item.toJson()).toList(),
     'recipes': (await recipes()).map((r) => r.toJson()).toList(),
     'history': (await history())
         .map((h) => {'recipe_id': h.recipeId, 'date': dateLabel(h.date)})
@@ -154,7 +239,7 @@ class AppDatabase extends GeneratedDatabase {
   });
   Future<void> restore(String source) async {
     final j = jsonDecode(source) as Map<String, dynamic>;
-    if (j['version'] != 1) {
+    if (j['version'] != 1 && j['version'] != 2) {
       throw const FormatException('Unsupported backup version.');
     }
     final incoming = (j['recipes'] as List)
@@ -218,6 +303,12 @@ class AppDatabase extends GeneratedDatabase {
       }
       for (final key in ['preferences', 'profile', 'servings']) {
         if (j[key] is String) await setSetting(key, j[key] as String);
+      }
+      for (final raw in j['pantry'] as List? ?? const []) {
+        final item = PantryItem.fromJson(Map<String, dynamic>.from(raw as Map));
+        await savePantryItem(
+          PantryItem.fromJson({...item.toJson(), 'id': null}),
+        );
       }
     });
   }

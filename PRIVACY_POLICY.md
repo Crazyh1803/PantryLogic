@@ -1,6 +1,6 @@
 # Pantry Logic Privacy Policy
 
-**Effective date:** September 17, 2026  
+**Effective date:** October 11, 2026<br>
 **Developer:** Apps by Dan ("AppsbyDan")  
 **Application ID:** `com.appsbydan.pantrylogic`
 
@@ -10,7 +10,7 @@ Pantry Logic is a local-first recipe, meal-planning, and grocery-list applicatio
 
 - Pantry Logic does not require an account.
 - Apps by Dan does not operate a server that receives your recipes, meal plans, grocery lists, household profiles, or API keys.
-- Recipes, meal plans, shopping lists, cooking history, household profiles, and settings are stored locally on your device.
+- Recipes, pantry inventory, meal plans, shopping lists, cooking history, household profiles, and settings are stored locally on your device.
 - If you choose an AI-powered feature, information needed for that request is sent directly from your device to the AI provider you configured.
 - Pantry Logic does not contain advertising or analytics SDKs and does not sell personal information.
 
@@ -18,7 +18,7 @@ Pantry Logic is a local-first recipe, meal-planning, and grocery-list applicatio
 
 Pantry Logic may store the following information locally:
 
-- recipes, ingredients, instructions, source links, and recipe notes;
+- recipes, pantry inventory, ingredients, instructions, source links, and recipe notes;
 - meal plans, grocery lists, cooking history, serving counts, and cooldown preferences;
 - household-member names, likes, dislikes, and guest counts;
 - region, preferred stores, cooking equipment, measurement choices, and AI recipe preferences;
@@ -31,10 +31,10 @@ This information is used to provide the app's recipe, planning, shopping, and pe
 
 ### AI features
 
-AI features are optional. When you ask Pantry Logic to extract, compose, replace, or recommend a recipe, the app may send the information needed for that request directly to your selected AI provider. Depending on the feature and the information you supplied, this may include:
+AI features are optional. When you ask Pantry Logic to extract, compose, replace, recommend a recipe, or identify pantry items from a photo, the app may send the information needed for that request directly to your selected AI provider. Depending on the feature and the information you supplied, this may include:
 
 - recipe text, captions, notes, ingredients, recipe titles, and source URLs;
-- screenshots or other recipe images you selected;
+- screenshots, pantry photos, or other images you selected or captured;
 - requested protein, cuisine, dish, or recipe directions;
 - household-member names and selected likes or dislikes;
 - region, preferred stores, cooking equipment, and other recipe preferences; and
@@ -63,7 +63,7 @@ Pantry Logic can open external pages for API-key help, provider documentation, A
 
 ## Backup files
 
-You may export a Pantry Logic backup file. The backup can contain recipes, household profiles, meal plans, shopping data, cooking history, and settings. API keys are excluded. You choose where to save or share the file, and you are responsible for protecting and deleting copies stored outside the app.
+You may export a Pantry Logic backup file. The backup can contain recipes, pantry inventory, household profiles, meal plans, shopping data, cooking history, and settings. API keys are excluded. You choose where to save or share the file, and you are responsible for protecting and deleting copies stored outside the app.
 
 ## Information Pantry Logic does not collect for Apps by Dan
 
@@ -90,4 +90,3 @@ This policy may be updated when Pantry Logic's features or data practices change
 ## Contact
 
 For privacy questions, open a privacy inquiry through the [Pantry Logic project contact page](https://github.com/Crazyh1803/PantryLogic/issues). Do not include API keys or sensitive personal information in a public issue. A dedicated privacy email may replace this contact mechanism before public release.
-

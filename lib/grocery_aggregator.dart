@@ -73,6 +73,7 @@ class GroceryAggregator {
     };
     return aliases[n] ?? n;
   }
+
   static List<Ingredient> consolidate(List<Recipe> recipes, int servings) {
     final result = <String, Ingredient>{};
     for (final r in recipes) {
@@ -106,4 +107,47 @@ class GroceryAggregator {
       return c == 0 ? a.name.compareTo(b.name) : c;
     });
   }
+
+  static List<Ingredient> withoutPantry(
+    List<Ingredient> groceries,
+    List<PantryItem> pantry,
+  ) {
+    final remaining = <Ingredient>[];
+    for (final grocery in groceries) {
+      var needed = grocery.quantity;
+      var covered = false;
+      final name = canonicalName(grocery.name);
+      for (final stored in pantry.where(
+        (item) => canonicalName(item.name) == name,
+      )) {
+        if (!grocery.quantitySpecified) {
+          covered = true;
+          break;
+        }
+        if (!stored.quantitySpecified) continue;
+        final pantryUnit = normalized(stored.unit);
+        final conversion = conversions[pantryUnit] ?? (pantryUnit, 1.0);
+        if (conversion.$1 != normalized(grocery.unit)) continue;
+        needed -= stored.quantity * conversion.$2;
+      }
+      if (covered || needed <= 0) continue;
+      remaining.add(
+        Ingredient(
+          name: grocery.name,
+          quantity: needed,
+          unit: grocery.unit,
+          aisle: grocery.aisle,
+          isPerishable: grocery.isPerishable,
+          quantitySpecified: grocery.quantitySpecified,
+        ),
+      );
+    }
+    return remaining;
+  }
+
+  static List<Ingredient> consolidateWithoutPantry(
+    List<Recipe> recipes,
+    int servings,
+    List<PantryItem> pantry,
+  ) => withoutPantry(consolidate(recipes, servings), pantry);
 }
