@@ -6,9 +6,11 @@ Flutter package: pantry_logic. Android/Linux application ID: com.appsbydan.pantr
 
 ## Open and run
 
-Open ../Open-Pantry-Logic.cmd in Windows Explorer, or open this pantry_logic directory in Android Studio. Select the Pantry Logic run configuration. Build.ps1 supports -Action test, apk or run from a normal PowerShell session.
+Double-click `Open-Pantry-Logic.cmd` in Windows Explorer. It resolves packages, configures the local Flutter and Android SDK paths, and opens this project in Android Studio with the shared Pantry Logic run configuration.
 
-The configured Flutter SDK is ../../work/toolchain/flutter and Android SDK is ../../work/android-sdk. Keep the workspace toolchain directory and its linked SDK tools.
+The launcher uses the portable SDKs under `../../work` when present, then falls back to Flutter and Android Studio installed on the system. Set `STUDIO_EXE` if Android Studio is installed in a non-standard location.
+
+From PowerShell, `Build.ps1` supports `-Action test`, `apk`, `aab`, `run`, or `studio`. APK output is under `build/app/outputs/flutter-apk/`; a signed release AAB requires the private configuration described in `android/RELEASE_SIGNING.md` and is written under `build/app/outputs/bundle/release/`.
 
 ## Install and migrate
 

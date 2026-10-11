@@ -1,7 +1,7 @@
 # Pantry Logic release signing
 
-Release bundles use the private upload key configured in `android/key.properties`.
-That file and the keystore are intentionally excluded from Git.
+Release bundles use the private upload key configured in `android/key.properties` when it is present.
+That file and the keystore are intentionally excluded from Git. Without them, Android Studio can still sync and produce an unsigned release artifact for local verification, but that artifact cannot be uploaded to Google Play.
 
 The local signing backup is stored in:
 

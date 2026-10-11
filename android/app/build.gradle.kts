@@ -9,8 +9,16 @@ plugins {
 
 val keystoreProperties = Properties()
 val keystorePropertiesFile = rootProject.file("key.properties")
-if (keystorePropertiesFile.exists()) {
+val hasReleaseSigning = keystorePropertiesFile.exists()
+if (hasReleaseSigning) {
     FileInputStream(keystorePropertiesFile).use(keystoreProperties::load)
+    val requiredSigningProperties = listOf("keyAlias", "keyPassword", "storeFile", "storePassword")
+    val missingSigningProperties = requiredSigningProperties.filter { keystoreProperties.getProperty(it).isNullOrBlank() }
+    check(missingSigningProperties.isEmpty()) {
+        "android/key.properties is missing required values: ${missingSigningProperties.joinToString()}"
+    }
+} else {
+    logger.warn("android/key.properties is absent; release APK/AAB outputs will be unsigned and cannot be uploaded.")
 }
 
 android {
@@ -38,20 +46,21 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            check(keystorePropertiesFile.exists()) {
-                "Missing android/key.properties. Restore the private Pantry Logic signing configuration before building a release."
+        if (hasReleaseSigning) {
+            create("release") {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
             }
-            keyAlias = keystoreProperties.getProperty("keyAlias")
-            keyPassword = keystoreProperties.getProperty("keyPassword")
-            storeFile = file(keystoreProperties.getProperty("storeFile"))
-            storePassword = keystoreProperties.getProperty("storePassword")
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 }
