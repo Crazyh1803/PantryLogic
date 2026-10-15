@@ -1,16 +1,8 @@
 import 'models.dart';
+import 'ingredient_identity.dart';
 
 class GroceryAggregator {
-  static const aisles = [
-    'Produce',
-    'Meat',
-    'Seafood',
-    'Dairy',
-    'Bakery',
-    'Pantry',
-    'Spices',
-    'Frozen',
-  ];
+  static const aisles = IngredientIdentity.aisles;
   static const conversions = <String, (String, double)>{
     'oz': ('g', 28.349523125),
     'ounce': ('g', 28.349523125),
@@ -40,6 +32,12 @@ class GroceryAggregator {
     'liter': ('ml', 1000),
     'litre': ('ml', 1000),
     'liters': ('ml', 1000),
+    'litres': ('ml', 1000),
+    'millilitres': ('ml', 1),
+    'milliliter': ('ml', 1),
+    'millilitre': ('ml', 1),
+    'each': ('whole', 1),
+    'count': ('whole', 1),
     'milliliters': ('ml', 1),
     'tsp': ('ml', 5),
     'teaspoon': ('ml', 5),
@@ -54,57 +52,93 @@ class GroceryAggregator {
     'ml': ('ml', 1),
   };
   static String key(Ingredient i) =>
-      '${canonicalName(i.name)}|${i.quantitySpecified ? normalized(i.unit) : 'unspecified'}';
-  static String canonicalName(String value) {
-    final n = normalized(value)
-        .replaceAll(RegExp(r'\b(fresh|large|small|medium|ripe)\b'), '')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-    const aliases = {
-      'tomatoes': 'tomato',
-      'onions': 'onion',
-      'peppers': 'pepper',
-      'cucumbers': 'cucumber',
-      'carrots': 'carrot',
-      'potatoes': 'potato',
-      'mushrooms': 'mushroom',
-      'lemons': 'lemon',
-      'limes': 'lime',
-    };
-    return aliases[n] ?? n;
+      '${i.canonicalId}|${i.quantitySpecified ? conversions[normalized(i.unit)]?.$1 ?? normalized(i.unit) : 'unspecified'}';
+  static String canonicalName(String value) => IngredientIdentity.name(value);
+
+  static String normalizeKey(String value) {
+    final split = value.lastIndexOf('|');
+    if (split < 0) return value;
+    final unit = normalized(value.substring(split + 1));
+    return '${canonicalName(value.substring(0, split))}|${conversions[unit]?.$1 ?? unit}';
   }
 
-  static List<Ingredient> consolidate(List<Recipe> recipes, int servings) {
+  static List<Ingredient> forPlan(MealPlan plan, List<PantryItem> pantry) {
+    final checked = plan.checked.map(normalizeKey).toSet();
+    plan.checked
+      ..clear()
+      ..addAll(checked);
+    final generated = consolidateWithoutPantry(
+      plan.shoppingRecipes,
+      plan.servings,
+      pantry,
+    );
+    final items = <String, Ingredient>{};
+    for (final i in generated) {
+      final k = key(i);
+      items[k] = plan.shoppingOverrides[k] ?? i;
+    }
+    // Keep explicit edits even when a meal or pantry update removes its source.
+    for (final e in plan.shoppingOverrides.entries) {
+      items[e.key] = e.value;
+    }
+    return _consolidateIngredients([
+      ...items.values,
+      ...plan.manualShoppingItems,
+    ]);
+  }
+
+  static List<Ingredient> consolidate(List<Recipe> recipes, int servings) =>
+      _consolidateIngredients([
+        for (final recipe in recipes)
+          for (final ingredient in recipe.ingredients)
+            Ingredient(
+              name: ingredient.name,
+              quantity: ingredient.quantity * servings / recipe.servings,
+              unit: ingredient.unit,
+              aisle: ingredient.aisle,
+              isPerishable: ingredient.isPerishable,
+              quantitySpecified: ingredient.quantitySpecified,
+            ),
+      ]);
+
+  static List<Ingredient> _consolidateIngredients(
+    List<Ingredient> ingredients,
+  ) {
     final result = <String, Ingredient>{};
-    for (final r in recipes) {
-      for (final i in r.ingredients) {
-        final unit = normalized(i.unit);
-        final conversion = conversions[unit] ?? (unit, 1.0);
-        final item = Ingredient(
-          name: canonicalName(i.name),
-          quantity: i.quantity * conversion.$2 * servings / r.servings,
-          unit: conversion.$1,
-          aisle: i.aisle,
-          isPerishable: i.isPerishable,
-          quantitySpecified: i.quantitySpecified,
-        );
-        final k = key(item);
-        final old = result[k];
-        result[k] = Ingredient(
-          name: item.name,
-          quantity: item.quantity + (old?.quantity ?? 0),
-          unit: item.unit,
-          aisle: old?.aisle ?? item.aisle,
-          isPerishable: item.isPerishable || (old?.isPerishable ?? false),
-          quantitySpecified: item.quantitySpecified,
-        );
-      }
+    for (final i in ingredients) {
+      final unit = normalized(i.unit);
+      final conversion = conversions[unit] ?? (unit, 1.0);
+      final item = Ingredient(
+        name: canonicalName(i.name),
+        quantity: i.quantity * conversion.$2,
+        unit: conversion.$1,
+        aisle: IngredientIdentity.category(i.name, fallback: i.aisle),
+        isPerishable: i.isPerishable,
+        quantitySpecified: i.quantitySpecified,
+      );
+      final k = key(item);
+      final old = result[k];
+      result[k] = Ingredient(
+        name: item.name,
+        quantity: item.quantity + (old?.quantity ?? 0),
+        unit: item.unit,
+        // Pick the same supported category regardless of recipe order.
+        aisle:
+            old == null ||
+                aisles.indexOf(item.aisle) < aisles.indexOf(old.aisle)
+            ? item.aisle
+            : old.aisle,
+        isPerishable: item.isPerishable || (old?.isPerishable ?? false),
+        quantitySpecified: item.quantitySpecified,
+      );
     }
     int rank(String aisle) =>
         aisles.contains(aisle) ? aisles.indexOf(aisle) : 99;
     return result.values.toList()..sort((a, b) {
       final c = rank(a.aisle).compareTo(rank(b.aisle));
-      return c == 0 ? a.name.compareTo(b.name) : c;
+      if (c != 0) return c;
+      final name = a.name.compareTo(b.name);
+      return name == 0 ? a.unit.compareTo(b.unit) : name;
     });
   }
 
@@ -130,7 +164,7 @@ class GroceryAggregator {
         if (conversion.$1 != normalized(grocery.unit)) continue;
         needed -= stored.quantity * conversion.$2;
       }
-      if (covered || needed <= 0) continue;
+      if (covered || (grocery.quantitySpecified && needed <= 0)) continue;
       remaining.add(
         Ingredient(
           name: grocery.name,

@@ -10,6 +10,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'database.dart';
 import 'models.dart';
+import 'recipe_codec.dart';
 import 'planning_engine.dart';
 import 'grocery_aggregator.dart';
 import 'ai_service.dart';
@@ -1225,14 +1226,113 @@ class _HomeState extends State<Home> {
     ]);
   }
 
+  Future<void> editShoppingItem(Ingredient item) async {
+    final amount = TextEditingController(
+      text: item.quantitySpecified ? item.quantity.toString() : '',
+    );
+    final unit = TextEditingController(text: item.unit);
+    final plan = active!;
+    final itemKey = GroceryAggregator.key(item);
+    final key =
+        plan.shoppingOverrides.entries
+            .where((e) => GroceryAggregator.key(e.value) == itemKey)
+            .map((e) => e.key)
+            .firstOrNull ??
+        itemKey;
+    final result = await showDialog<Ingredient>(
+      context: context,
+      builder: (context) {
+        String? error;
+        return StatefulBuilder(
+          builder: (context, update) => AlertDialog(
+            title: Text('Edit ${item.name}'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: amount,
+                  decoration: const InputDecoration(
+                    labelText: 'Amount (blank = as needed)',
+                  ),
+                ),
+                TextField(
+                  controller: unit,
+                  decoration: const InputDecoration(labelText: 'Unit'),
+                ),
+                if (error != null) Text(error!),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  try {
+                    final quantity = amount.text.trim().isEmpty
+                        ? 0.0
+                        : parseAmount(amount.text);
+                    if (quantity == null ||
+                        !quantity.isFinite ||
+                        quantity < 0) {
+                      throw const FormatException('Enter a valid amount.');
+                    }
+                    Navigator.pop(
+                      context,
+                      Ingredient(
+                        name: item.name,
+                        quantity: quantity,
+                        unit: unit.text.trim().isEmpty
+                            ? 'as needed'
+                            : unit.text.trim(),
+                        aisle: item.aisle,
+                        isPerishable: item.isPerishable,
+                        quantitySpecified: quantity > 0,
+                      ),
+                    );
+                  } on FormatException catch (e) {
+                    update(() => error = e.message);
+                  }
+                },
+                child: const Text('Save'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    amount.dispose();
+    unit.dispose();
+    if (result == null) return;
+    await run(() async {
+      final previous = plan.shoppingOverrides[key];
+      final previousChecked = Set<String>.from(plan.checked);
+      if (plan.checked.remove(itemKey)) {
+        plan.checked.add(GroceryAggregator.key(result));
+      }
+      plan.shoppingOverrides[key] = result;
+      try {
+        await db!.savePlan(plan);
+      } catch (_) {
+        plan.checked
+          ..clear()
+          ..addAll(previousChecked);
+        if (previous == null) {
+          plan.shoppingOverrides.remove(key);
+        } else {
+          plan.shoppingOverrides[key] = previous;
+        }
+        rethrow;
+      }
+      if (mounted) setState(() {});
+    });
+  }
+
   Widget groceries() {
     final allItems = active == null
         ? <Ingredient>[]
-        : GroceryAggregator.consolidateWithoutPantry(
-            active!.shoppingRecipes,
-            active!.servings,
-            pantryItems,
-          );
+        : GroceryAggregator.forPlan(active!, pantryItems);
     allItems.sort(
       (a, b) => prefs.aisleOrder
           .indexOf(a.aisle)
@@ -1331,7 +1431,17 @@ class _HomeState extends State<Home> {
                 subtitle: i.isPerishable
                     ? const Text('Fresh · check your fridge first')
                     : null,
-                secondary: Text(displayAmount(i)),
+                secondary: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(displayAmount(i)),
+                    IconButton(
+                      tooltip: 'Edit shopping item',
+                      icon: const Icon(Icons.edit_outlined),
+                      onPressed: busy ? null : () => editShoppingItem(i),
+                    ),
+                  ],
+                ),
                 onChanged: busy
                     ? null
                     : (value) => run(() async {

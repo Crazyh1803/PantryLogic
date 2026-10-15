@@ -197,17 +197,13 @@ class AppDatabase extends GeneratedDatabase {
         plan.sides.keys.any((i) => i < 0 || i >= plan.meals.length)) {
       throw const FormatException('Invalid menu dates or servings.');
     }
+    final groceries = GroceryAggregator.forPlan(plan, const []);
     await customStatement(
       'INSERT INTO weekly_plans(start_date,plan_json,shopping_list_json) VALUES (?,?,?) ON CONFLICT(start_date) DO UPDATE SET plan_json=excluded.plan_json,shopping_list_json=excluded.shopping_list_json',
       [
         dateLabel(plan.start),
         jsonEncode(plan.toJson()),
-        jsonEncode(
-          GroceryAggregator.consolidate(
-            plan.shoppingRecipes,
-            plan.servings,
-          ).map((i) => i.toJson()).toList(),
-        ),
+        jsonEncode(groceries.map((i) => i.toJson()).toList()),
       ],
     );
   }
@@ -287,6 +283,8 @@ class AppDatabase extends GeneratedDatabase {
             meals: meals,
             servings: plan.servings,
             checked: plan.checked,
+            shoppingOverrides: plan.shoppingOverrides,
+            manualShoppingItems: plan.manualShoppingItems,
             sides: {
               for (final e in plan.sides.entries)
                 e.key: Recipe.fromJson({

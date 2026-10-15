@@ -1,4 +1,5 @@
 import 'models.dart';
+import 'ingredient_identity.dart';
 import 'recipe_codec.dart';
 
 /// Conservative offline path for a caption with explicit ingredient bullets and method.
@@ -8,13 +9,27 @@ Recipe? parseCaption(String source) {
       .map((s) => s.trim().replaceFirst(RegExp(r'^#+\s*'), '').trim())
       .where((s) => s.isNotEmpty)
       .toList();
-  final bullets = lines.where((s) => RegExp(r'^[-•*]\s+').hasMatch(s)).toList();
-  if (bullets.length < 2) return null;
-  final first = lines.indexOf(bullets.first),
-      last = lines.lastIndexOf(bullets.last);
-  if (first < 1 || last >= lines.length - 1) return null;
-  final method = lines
-      .skip(last + 1)
+  bool bullet(String s) => RegExp(r'^[-•*]\s+').hasMatch(s);
+  bool heading(String s) => RegExp(
+    r'^(?:instructions|directions|method|preparation|steps)(?:\s*:)?$',
+    caseSensitive: false,
+  ).hasMatch(s);
+  final first = lines.indexWhere(bullet);
+  if (first < 1) return null;
+  final bullets = <String>[];
+  var end = first;
+  while (end < lines.length &&
+      bullet(lines[end]) &&
+      !heading(lines[end].replaceFirst(RegExp(r'^[-•*]\s+'), ''))) {
+    bullets.add(lines[end++]);
+  }
+  if (bullets.length < 2 || end >= lines.length) return null;
+  final methodLines = lines
+      .skip(end)
+      .where((s) => !heading(s))
+      .map((s) => s.replaceFirst(RegExp(r'^(?:[-•*]|\d+[.)])\s+'), ''))
+      .toList();
+  final method = methodLines
       .join('\n')
       .replaceAll(RegExp(r'["”]+$'), '')
       .trim();
@@ -58,16 +73,8 @@ Recipe? parseCaption(String source) {
       item = unitMatch[2]!;
     }
     final name = item.replaceAll(RegExp(r'["”]+$'), '').trim();
-    final n = normalized(name);
-    final aisle = RegExp(r'\bbeef\b|\bchicken\b').hasMatch(n)
-        ? 'Meat'
-        : n.contains('yogurt')
-        ? 'Dairy'
-        : RegExp(r'cucumber|mint|garlic|onion').hasMatch(n)
-        ? 'Produce'
-        : RegExp(r'salt|pepper|turmeric').hasMatch(n)
-        ? 'Spices'
-        : 'Pantry';
+    if (!IngredientIdentity.validName(name)) return null;
+    final aisle = IngredientIdentity.category(name);
     ingredients.add(
       Ingredient(
         name: name,
@@ -79,7 +86,7 @@ Recipe? parseCaption(String source) {
       ),
     );
   }
-  final text = normalized(ingredients.map((i) => i.name).join(' '));
+  final text = normalized(ingredients.map((i) => i.canonicalId).join(' '));
   final protein = RegExp(r'\bbeef\b').hasMatch(text)
       ? 'beef'
       : RegExp(r'\bchicken\b').hasMatch(text)
@@ -113,7 +120,7 @@ Recipe? parseCaption(String source) {
     title: title,
     protein: protein,
     ingredients: ingredients,
-    instructions: method.split(RegExp(r'(?<=[.!?])\s+(?=[A-Z])')).toList(),
+    instructions: methodLines,
     servings: 1,
     reviewNotes: notes,
   );
