@@ -22,7 +22,7 @@ class Ingredient {
     this.isPerishable = false,
     this.quantitySpecified = true,
   }) {
-    if (!IngredientIdentity.validName(name) ||
+    if (name.trim().isEmpty ||
         unit.trim().isEmpty ||
         !quantity.isFinite ||
         quantity < 0 ||

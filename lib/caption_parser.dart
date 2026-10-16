@@ -24,11 +24,27 @@ Recipe? parseCaption(String source) {
     bullets.add(lines[end++]);
   }
   if (bullets.length < 2 || end >= lines.length) return null;
+  // A second ingredient group is ambiguous here; let structured ingestion
+  // interpret it rather than silently treating sauce ingredients as steps.
+  for (var index = end; index < lines.length - 1; index++) {
+    final line = lines[index];
+    if (!bullet(line) &&
+        !heading(line) &&
+        line.endsWith(':') &&
+        bullet(lines[index + 1])) {
+      return null;
+    }
+  }
   final methodLines = lines
       .skip(end)
       .where((s) => !heading(s))
       .map((s) => s.replaceFirst(RegExp(r'^(?:[-•*]|\d+[.)])\s+'), ''))
       .toList();
+  if (methodLines.isNotEmpty) {
+    methodLines[methodLines.length - 1] = methodLines.last
+        .replaceAll(RegExp(r'["”]+$'), '')
+        .trim();
+  }
   final method = methodLines
       .join('\n')
       .replaceAll(RegExp(r'["”]+$'), '')

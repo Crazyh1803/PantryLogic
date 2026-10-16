@@ -63,10 +63,6 @@ class GroceryAggregator {
   }
 
   static List<Ingredient> forPlan(MealPlan plan, List<PantryItem> pantry) {
-    final checked = plan.checked.map(normalizeKey).toSet();
-    plan.checked
-      ..clear()
-      ..addAll(checked);
     final generated = consolidateWithoutPantry(
       plan.shoppingRecipes,
       plan.servings,
@@ -77,14 +73,38 @@ class GroceryAggregator {
       final k = key(i);
       items[k] = plan.shoppingOverrides[k] ?? i;
     }
-    // Keep explicit edits even when a meal or pantry update removes its source.
-    for (final e in plan.shoppingOverrides.entries) {
-      items[e.key] = e.value;
-    }
     return _consolidateIngredients([
       ...items.values,
       ...plan.manualShoppingItems,
     ]);
+  }
+
+  /// Migrate legacy keys outside the rendering path.
+  static void normalizeChecks(MealPlan plan) {
+    final normalized = plan.checked.map(normalizeKey).toSet();
+    plan.checked
+      ..clear()
+      ..addAll(normalized);
+  }
+
+  static void resetOverride(MealPlan plan, String sourceKey) {
+    final previous = plan.shoppingOverrides.remove(sourceKey);
+    if (previous != null && plan.checked.remove(key(previous))) {
+      plan.checked.add(normalizeKey(sourceKey));
+    }
+  }
+
+  static void prepareForSave(MealPlan plan) {
+    final demanded = consolidate(
+      plan.shoppingRecipes,
+      plan.servings,
+    ).map(key).toSet();
+    plan.shoppingOverrides.removeWhere(
+      (source, _) => !demanded.contains(source),
+    );
+    normalizeChecks(plan);
+    final visible = forPlan(plan, const []).map(key).toSet();
+    plan.checked.removeWhere((k) => !visible.contains(k));
   }
 
   static List<Ingredient> consolidate(List<Recipe> recipes, int servings) =>

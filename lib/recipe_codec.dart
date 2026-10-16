@@ -115,7 +115,11 @@ Recipe decodeRecipe(Object? value) {
           'An ingredient was not structured correctly.',
         );
       }
-      final rawAmount = raw['quantity'] ?? raw['amount'];
+      final suppliedAmount = raw['quantity'] ?? raw['amount'];
+      final rawAmount =
+          suppliedAmount is String && suppliedAmount.trim().isEmpty
+          ? null
+          : suppliedAmount;
       final amount = parseAmount(rawAmount);
       if (rawAmount != null && amount == null) {
         throw const FormatException(
@@ -129,17 +133,23 @@ Recipe decodeRecipe(Object? value) {
       if (amount != null && (!amount.isFinite || amount < 0)) {
         throw const FormatException('An ingredient amount is invalid.');
       }
+      final name = raw['name'] as String;
+      if (!IngredientIdentity.validName(name)) {
+        throw const FormatException(
+          'An ingredient contains a heading or cooking instruction. Review its food name.',
+        );
+      }
       final specified = amount != null && amount > 0;
       ingredients.add(
         Ingredient(
-          name: (raw['name'] ?? '').toString().trim(),
+          name: name.trim(),
           quantity: amount ?? 0,
           quantitySpecified: specified,
           unit: (raw['unit'] ?? (specified ? 'whole' : 'as needed'))
               .toString()
               .trim(),
           aisle: IngredientIdentity.category(
-            raw['name'] as String,
+            name,
             fallback: raw['aisle']?.toString(),
           ),
           isPerishable: raw['is_perishable'] == true,

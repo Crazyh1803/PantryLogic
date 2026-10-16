@@ -181,13 +181,15 @@ class AppDatabase extends GeneratedDatabase {
       customStatement('DELETE FROM meal_history WHERE id=?', [id]);
   Future<List<MealPlan>> plans() async =>
       (await customSelect(
-            'SELECT id,plan_json FROM weekly_plans ORDER BY start_date DESC',
-          ).get())
-          .map(
-            (r) =>
-                MealPlan.decode(r.read<int>('id'), r.read<String>('plan_json')),
-          )
-          .toList();
+        'SELECT id,plan_json FROM weekly_plans ORDER BY start_date DESC',
+      ).get()).map((r) {
+        final plan = MealPlan.decode(
+          r.read<int>('id'),
+          r.read<String>('plan_json'),
+        );
+        GroceryAggregator.normalizeChecks(plan);
+        return plan;
+      }).toList();
   Future<void> savePlan(MealPlan plan) async {
     if (plan.meals.isEmpty ||
         plan.meals.length > 14 ||
@@ -197,6 +199,8 @@ class AppDatabase extends GeneratedDatabase {
         plan.sides.keys.any((i) => i < 0 || i >= plan.meals.length)) {
       throw const FormatException('Invalid menu dates or servings.');
     }
+    GroceryAggregator.prepareForSave(plan);
+    // Persist full demand; the view subtracts current pantry stock dynamically.
     final groceries = GroceryAggregator.forPlan(plan, const []);
     await customStatement(
       'INSERT INTO weekly_plans(start_date,plan_json,shopping_list_json) VALUES (?,?,?) ON CONFLICT(start_date) DO UPDATE SET plan_json=excluded.plan_json,shopping_list_json=excluded.shopping_list_json',

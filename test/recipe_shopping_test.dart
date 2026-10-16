@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/material.dart';
+import 'package:pantry_logic/main.dart';
 import 'package:drift/native.dart';
 import 'package:pantry_logic/caption_parser.dart';
 import 'package:pantry_logic/database.dart';
@@ -54,6 +56,251 @@ Serve with rice and enjoy this dinner together.'''),
       isNull,
     );
   });
+  test(
+    'ingredient subgroups defer to structured parsing and method quotes are cleaned',
+    () {
+      expect(
+        parseCaption('''Dinner
+- 100 g rice
+- 2 onions
+For the sauce:
+- 200 ml milk
+- 1 tbsp flour
+Instructions:
+Cook everything together until thoroughly done and serve warm.'''),
+        isNull,
+      );
+      final recipe = parseCaption('''Dinner
+- 100 g rice
+- 2 onions
+Instructions:
+Cook the rice and onions until tender, then serve warm."''')!;
+      expect(recipe.instructions.last.endsWith('"'), isFalse);
+    },
+  );
+  test('bulleted methods without a heading stay supported', () {
+    final recipe = parseCaption('''Dinner
+- 100 g rice
+- 2 onions
+Cook the rice and onions together until thoroughly tender.
+- Stir well and simmer until ready.
+- Serve warm.''')!;
+    expect(recipe.ingredients, hasLength(2));
+    expect(recipe.instructions, hasLength(3));
+    expect(recipe.instructions[1], 'Stir well and simmer until ready.');
+    expect(
+      parseCaption('''Dinner
+- 100 g rice
+- 2 onions
+Instructions:
+Cook the rice and onions together until thoroughly tender.
+For the sauce:
+- 200 ml milk
+- 1 tbsp flour'''),
+      isNull,
+    );
+  });
+  test('pantry coverage hides demand without clearing saved checks', () async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final plan = MealPlan(
+      start: DateTime.utc(2026, 10, 12),
+      meals: [
+        dinner([food('rice', 500, 'g')]),
+      ],
+      servings: 2,
+      checked: {'rice|g'},
+    );
+    final stored = await db.savePantryItem(
+      PantryItem(name: 'rice', quantity: 1000, unit: 'g'),
+    );
+    await db.savePlan(plan);
+    final saved = (await db.plans()).single;
+    expect(saved.checked, {'rice|g'});
+    expect(GroceryAggregator.forPlan(saved, await db.pantryItems()), isEmpty);
+    await db.deletePantryItem(stored.id!);
+    expect(
+      GroceryAggregator.forPlan(saved, await db.pantryItems()).single.name,
+      'rice',
+    );
+    expect(saved.checked, {'rice|g'});
+  });
+  test('pepper and paprika spices never merge with bell peppers', () {
+    final items = GroceryAggregator.consolidate([
+      dinner([
+        food('pepper', 1, 'g'),
+        food('black pepper', 2, 'g'),
+        food('paprika', 3, 'g'),
+        food('ground paprika', 4, 'g'),
+        food('bell pepper', 100, 'g'),
+        food('paprika (rot)', 200, 'g'),
+      ]),
+    ], 2);
+    expect(items, hasLength(4));
+    expect(items.singleWhere((i) => i.name == 'black pepper').quantity, 3);
+    expect(items.singleWhere((i) => i.name == 'ground paprika').quantity, 7);
+    expect(items.where((i) => i.aisle == 'Spices'), hasLength(2));
+    expect(items.singleWhere((i) => i.name == 'bell pepper').quantity, 100);
+    expect(
+      items.singleWhere((i) => i.name == 'red bell pepper').aisle,
+      'Produce',
+    );
+  });
+  test(
+    'legacy food names remain loadable while new ingestion is validated',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final ingredients =
+          [
+                'Grill seasoning',
+                'Roast garlic',
+                'Mix seasoning',
+                'Let spice',
+                'a' * 161,
+              ]
+              .map(
+                (name) => Ingredient.fromJson({
+                  'name': name,
+                  'quantity': 1,
+                  'unit': 'g',
+                }),
+              )
+              .toList();
+      final saved = await db.saveRecipe(dinner(ingredients));
+      await db.savePlan(
+        MealPlan(
+          start: DateTime.utc(2026, 10, 12),
+          meals: [saved],
+          servings: 2,
+        ),
+      );
+      expect(
+        (await db.recipes()).single.ingredients.map((i) => i.name),
+        ingredients.map((i) => i.name),
+      );
+      expect(
+        GroceryAggregator.forPlan((await db.plans()).single, const []),
+        hasLength(5),
+      );
+      expect(
+        () => decodeRecipe(wire('Add onions and stir until browned', 1)),
+        throwsFormatException,
+      );
+      expect(
+        decodeRecipe(wire('salt', '  ')).ingredients.single.quantitySpecified,
+        isFalse,
+      );
+    },
+  );
+  test(
+    'overrides respect pantry coverage, reset, and removed meal demand',
+    () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      final plan = MealPlan(
+        start: DateTime.utc(2026, 10, 12),
+        meals: [
+          dinner([food('rice', 500, 'g')]),
+        ],
+        servings: 2,
+        checked: {'rice|g', 'old food|g'},
+        shoppingOverrides: {'rice|g': food('rice', 750, 'g')},
+      );
+      expect(GroceryAggregator.forPlan(plan, const []).single.quantity, 750);
+      final before = jsonEncode(plan.toJson());
+      expect(
+        GroceryAggregator.forPlan(plan, [
+          PantryItem(name: 'rice', quantity: 1000, unit: 'g'),
+        ]),
+        isEmpty,
+      );
+      expect(jsonEncode(plan.toJson()), before);
+      await db.savePlan(plan);
+      expect(plan.checked, {'rice|g'});
+      plan.shoppingOverrides.remove('rice|g');
+      expect(GroceryAggregator.forPlan(plan, const []).single.quantity, 500);
+      plan.shoppingOverrides['rice|g'] = food('rice', 750, 'g');
+      plan.shoppingDays.clear();
+      await db.savePlan(plan);
+      expect(plan.shoppingOverrides, isEmpty);
+      expect(plan.checked, isEmpty);
+      plan.shoppingDays.add(0);
+      await db.savePlan(plan);
+      expect(plan.checked, isEmpty);
+      expect(GroceryAggregator.forPlan(plan, const []).single.quantity, 500);
+    },
+  );
+  test('resetting an edited unit moves its check back to the recipe key', () {
+    final plan = MealPlan(
+      start: DateTime.utc(2026, 10, 12),
+      meals: [
+        dinner([food('rice', 500, 'g')]),
+      ],
+      servings: 2,
+      checked: {'rice|ml'},
+      shoppingOverrides: {'rice|g': food('rice', 750, 'ml')},
+    );
+    GroceryAggregator.resetOverride(plan, 'rice|g');
+    expect(plan.shoppingOverrides, isEmpty);
+    expect(plan.checked, {'rice|g'});
+    expect(GroceryAggregator.forPlan(plan, const []).single.quantity, 500);
+  });
+  testWidgets(
+    'shopping editor validates zero, resets edits and disposes after closing',
+    (tester) async {
+      final edits = <ShoppingItemEdit?>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () async {
+                  edits.add(
+                    await showDialog<ShoppingItemEdit>(
+                      context: context,
+                      builder: (_) => ShoppingItemDialog(
+                        item: food('rice', 500, 'g'),
+                        canReset: true,
+                      ),
+                    ),
+                  );
+                },
+                child: const Text('Open editor'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open editor'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, '0');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Enter a positive amount, or leave it blank for as needed.'),
+        findsOneWidget,
+      );
+      await tester.enterText(find.byType(TextField).first, '250');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(edits.single!.replacement!.quantity, 250);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Open editor'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Use recipe amount'));
+      await tester.pumpAndSettle();
+      expect(edits.last!.replacement, isNull);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text('Open editor'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField).first, '');
+      await tester.tap(find.text('Save'));
+      await tester.pumpAndSettle();
+      expect(edits.last!.replacement!.quantitySpecified, isFalse);
+      expect(tester.takeException(), isNull);
+    },
+  );
   test('structured input rejects instruction names and malformed amounts', () {
     for (final name in [
       'Cook beef for 10 minutes',
@@ -256,7 +503,7 @@ Serve with rice and enjoy this dinner together.'''),
         plan,
         const [],
       ).map((i) => i.toJson()).toList();
-      expect(plan.checked, {'ground beef|g'});
+      expect(plan.checked, {'Rinderhackfleisch|kg'}); // Rendering is pure.
       expect(
         GroceryAggregator.forPlan(
           plan,
@@ -291,7 +538,10 @@ Serve with rice and enjoy this dinner together.'''),
         first,
       );
       saved.shoppingDays.clear();
-      expect(GroceryAggregator.forPlan(saved, const []), hasLength(2));
+      expect(GroceryAggregator.forPlan(saved, const []).single.name, 'bread');
+      await db.savePlan(saved);
+      expect(saved.shoppingOverrides, isEmpty);
+      expect(saved.checked, isEmpty);
     },
   );
 }
