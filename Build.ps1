@@ -63,7 +63,8 @@ if (-not $env:ANDROID_SDK_ROOT -and $env:ANDROID_HOME) {
 
 $bundledJava = Join-Path $toolPath 'toolchain\android-studio\jbr'
 if (Test-Path $bundledJava) { $env:JAVA_HOME = $bundledJava }
-if (Test-Path (Join-Path $toolPath 'pub-cache')) { $env:PUB_CACHE = Join-Path $toolPath 'pub-cache' }
+# Android unit-test configuration requires plugin sources and outputs on one drive.
+$env:PUB_CACHE = Join-Path $PSScriptRoot '.pub-cache'
 if (Test-Path (Join-Path $toolPath 'gradle')) { $env:GRADLE_USER_HOME = Join-Path $toolPath 'gradle' }
 
 $flutterRoot = Split-Path (Split-Path $flutterPath -Parent) -Parent

@@ -14,6 +14,8 @@ The launcher uses the portable SDKs under `../../work` when present, then falls 
 
 For a relocated checkout, it also discovers portable tools beside the configured Flutter SDK and reuses their existing Studio properties. It repairs the known stale local module registration and selects the shared Flutter `Pantry Logic` configuration when the old Android `app` configuration was selected.
 
+The launcher uses the ignored project-local `.pub-cache` so Android plugin sources and build outputs stay on the same Windows drive. After changing this cache setting, close Studio completely and reopen it with `Open-Pantry-Logic.cmd` so package resolution inherits the new path. For direct Flutter commands, set `$env:PUB_CACHE = Join-Path $PWD '.pub-cache'` first.
+
 From PowerShell, `Build.ps1` supports `-Action test`, `apk`, `aab`, `run`, or `studio`. APK output is under `build/app/outputs/flutter-apk/`; a signed release AAB requires the private configuration described in `android/RELEASE_SIGNING.md` and is written under `build/app/outputs/bundle/release/`.
 
 If Flutter is absent from PATH, the launcher also reads its existing path from `android/local.properties`. Before building or opening Studio, it repairs the known Flutter `DeeplinkTest.kt` private Gradle JUnit import using Kotlin's existing test API. This updates that SDK test source only when the affected code is present; it keeps tests enabled. For an already-open Studio session, run `./tools/Repair-FlutterGradleTests.ps1 -FlutterRoot '<your Flutter SDK directory>'` once, then retry the build. Repeat after replacing an affected SDK.

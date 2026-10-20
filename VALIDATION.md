@@ -1,5 +1,11 @@
 # Validation
 
+## Cross-drive Android plugin repair — October 20, 2026
+
+- Build.ps1 now sets PUB_CACHE to the ignored project-local `.pub-cache`; the shared Flutter run configuration uses the same path. Regenerated package/plugin metadata points to D: alongside the project outputs.
+- Direct Gradle execution of `:flutter_plugin_android_lifecycle:generateDebugUnitTestConfig`, `:image_picker_android:generateDebugUnitTestConfig`, and `:path_provider_android:generateDebugUnitTestConfig` passed: BUILD SUCCESSFUL, 64 actionable tasks.
+- Flutter pub get downloaded/resolved the packages but exited with the existing Windows symlink-support warning. A full app build was not performed for this change. Fully restart Studio through the launcher to inherit PUB_CACHE.
+
 ## Studio run configuration repair — October 20, 2026
 
 - Corrected local module registration from `.idea/PantryLogic.iml` (whose content root was `.idea`) to the Flutter project's `pantry_logic.iml`, and changed the stale `Android App.app` selection to `Flutter.Pantry Logic`.

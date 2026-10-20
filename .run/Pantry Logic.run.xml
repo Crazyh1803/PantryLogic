@@ -1,6 +1,9 @@
 <component name="ProjectRunConfigurationManager">
   <configuration default="false" name="Pantry Logic" type="FlutterRunConfigurationType" factoryName="Flutter">
     <option name="filePath" value="$PROJECT_DIR$/lib/main.dart" />
+    <envs>
+      <env name="PUB_CACHE" value="$PROJECT_DIR$/.pub-cache" />
+    </envs>
     <method v="2" />
   </configuration>
 </component>
