@@ -36,6 +36,14 @@ if (-not $flutterPath) {
     throw 'Flutter was not found. Install Flutter or restore work\toolchain\flutter.'
 }
 
+# A relocated checkout may still use the original portable Flutter installation.
+# Discover its sibling tools instead of mixing it with another Studio install.
+$flutterRoot = Split-Path (Split-Path $flutterPath -Parent) -Parent
+$sdkToolPath = Split-Path (Split-Path $flutterRoot -Parent) -Parent
+if (Test-Path (Join-Path $sdkToolPath 'toolchain\android-studio\bin\studio64.exe')) {
+    $toolPath = $sdkToolPath
+}
+
 $bundledAndroidSdk = Join-Path $toolPath 'android-sdk'
 if (Test-Path $bundledAndroidSdk) {
     $env:ANDROID_HOME = $bundledAndroidSdk
@@ -98,6 +106,7 @@ try {
         'aab' { & $flutterPath build appbundle --release }
         'run' { & $flutterPath run }
         'studio' {
+            & (Join-Path $PSScriptRoot 'tools\Initialize-StudioProject.ps1') -ProjectPath $PSScriptRoot
             $studioCandidates = @(
                 $env:STUDIO_EXE,
                 (Join-Path $toolPath 'toolchain\android-studio\bin\studio64.exe')
@@ -125,7 +134,14 @@ try {
             if (-not $studioPath) {
                 throw 'Android Studio was not found. Install it or set STUDIO_EXE to studio64.exe.'
             }
-            Start-Process -FilePath $studioPath -ArgumentList ('"{0}"' -f $PSScriptRoot)
+            $portableProperties = Join-Path $toolPath 'studio-2026.1.4.properties'
+            if (-not $env:STUDIO_PROPERTIES -and
+                $studioPath -eq (Join-Path $toolPath 'toolchain\android-studio\bin\studio64.exe') -and
+                (Test-Path $portableProperties)) {
+                $env:STUDIO_PROPERTIES = $portableProperties
+            }
+            Write-Host "Opening Android Studio: $studioPath"
+            Start-Process -FilePath $studioPath -ArgumentList ('"{0}"' -f $PSScriptRoot) -WindowStyle Hidden
         }
     }
     if ($Action -ne 'studio' -and $LASTEXITCODE -ne 0) {

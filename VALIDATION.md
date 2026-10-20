@@ -1,5 +1,12 @@
 # Validation
 
+## Studio run configuration repair — October 20, 2026
+
+- Corrected local module registration from `.idea/PantryLogic.iml` (whose content root was `.idea`) to the Flutter project's `pantry_logic.iml`, and changed the stale `Android App.app` selection to `Flutter.Pantry Logic`.
+- Launcher now discovers sibling portable tools from the resolved Flutter SDK after checkout relocation and uses that Studio installation's existing properties file when present.
+- Launcher completed successfully. Studio logs confirm Dart 509.0.0 and Flutter 96.0.0 loaded and the GitHub checkout opened. Local XML confirms the corrected module and run selection. App execution was not tested.
+- Flutter package setup reported that Windows symlink support requires Developer Mode; Studio still opened.
+
 ## Launcher diagnostics — October 20, 2026
 
 - The reported missing-file failure did not reproduce: the existing CMD launcher completed with exit code 0.
