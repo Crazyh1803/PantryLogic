@@ -12,7 +12,7 @@ The launcher saves diagnostics to `%TEMP%\PantryLogic-launch.log`, including the
 
 The launcher uses the portable SDKs under `../../work` when present, then falls back to Flutter and Android Studio installed on the system. Set `STUDIO_EXE` if Android Studio is installed in a non-standard location.
 
-For a relocated checkout, it also discovers portable tools beside the configured Flutter SDK and reuses their existing Studio properties. It repairs the known stale local module registration and selects the shared Flutter `Pantry Logic` configuration when the old Android `app` configuration was selected.
+For a relocated checkout, it also discovers portable tools beside the configured Flutter SDK and reuses their existing Studio properties. When Android Gradle is linked, it removes the manually registered Java root module that conflicts with Gradle compilation. It selects the shared Flutter `Pantry Logic` configuration when the old Android `app` configuration was selected.
 
 The launcher uses the ignored project-local `.pub-cache` so Android plugin sources and build outputs stay on the same Windows drive. After changing this cache setting, close Studio completely and reopen it with `Open-Pantry-Logic.cmd` so package resolution inherits the new path. For direct Flutter commands, set `$env:PUB_CACHE = Join-Path $PWD '.pub-cache'` first.
 

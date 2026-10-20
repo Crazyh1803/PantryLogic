@@ -1,5 +1,11 @@
 # Validation
 
+## Mixed Java/Android module repair — October 20, 2026
+
+- Removed the manually registered `pantry_logic.iml` root module from local modules.xml when the Android Gradle project is linked. This corrects the earlier launcher repair, which registered a non-Gradle Java module alongside Android Gradle modules.
+- The initializer now removes only the two known manual root registrations and preserves other module entries. Source files and IML files are retained.
+- Applied the initializer and verified the conflicting registration is absent and the shared Flutter run configuration remains valid XML with FlutterRunConfigurationType. Studio reload and compilation have not been verified for this change.
+
 ## Cross-drive Android plugin repair — October 20, 2026
 
 - Build.ps1 now sets PUB_CACHE to the ignored project-local `.pub-cache`; the shared Flutter run configuration uses the same path. Regenerated package/plugin metadata points to D: alongside the project outputs.
