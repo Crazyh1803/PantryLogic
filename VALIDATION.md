@@ -1,4 +1,14 @@
-# Validation — September 15, 2026
+# Validation
+
+## Flutter Gradle test repair — October 20, 2026
+
+- Reproduced the source-level cause in the configured Flutter SDK: DeeplinkTest imported `assertThrows` from Gradle's private shaded JUnit package.
+- Replaced it with `kotlin.test.assertFailsWith<NullPointerException>` using Flutter's existing kotlin-test dependency. The tracked repair script applies this targeted change once and is called by Build.ps1, including before opening Studio.
+- Gradle 9.3.1 `compileTestKotlin --offline` passed against the configured Flutter Gradle plugin build.
+- `test --tests com.flutter.gradle.DeeplinkTest --offline` passed. Existing deprecation warnings remain.
+- Both PowerShell scripts passed syntax parsing. A complete APK/AAB build was not run for this repair.
+
+## September 15, 2026 validation
 
 ## Pantry Logic rename
 

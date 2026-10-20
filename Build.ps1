@@ -22,6 +22,17 @@ $flutterPath = if (Test-Path $bundledFlutterPath) {
     Find-CommandPath @('flutter.bat', 'flutter')
 }
 if (-not $flutterPath) {
+    $existingProperties = Join-Path $PSScriptRoot 'android\local.properties'
+    if (Test-Path $existingProperties) {
+        $sdkLine = Get-Content $existingProperties | Where-Object { $_ -match '^\s*flutter\.sdk\s*=' } | Select-Object -Last 1
+        if ($sdkLine) {
+            $configuredSdk = ($sdkLine -replace '^\s*flutter\.sdk\s*=\s*', '').Replace('\\', '\').Replace('\:', ':')
+            $configuredFlutter = Join-Path $configuredSdk 'bin\flutter.bat'
+            if (Test-Path $configuredFlutter) { $flutterPath = $configuredFlutter }
+        }
+    }
+}
+if (-not $flutterPath) {
     throw 'Flutter was not found. Install Flutter or restore work\toolchain\flutter.'
 }
 
@@ -48,6 +59,7 @@ if (Test-Path (Join-Path $toolPath 'pub-cache')) { $env:PUB_CACHE = Join-Path $t
 if (Test-Path (Join-Path $toolPath 'gradle')) { $env:GRADLE_USER_HOME = Join-Path $toolPath 'gradle' }
 
 $flutterRoot = Split-Path (Split-Path $flutterPath -Parent) -Parent
+& (Join-Path $PSScriptRoot 'tools\Repair-FlutterGradleTests.ps1') -FlutterRoot $flutterRoot
 $localPropertiesPath = Join-Path $PSScriptRoot 'android\local.properties'
 $managedPropertiesPattern = if ($env:ANDROID_HOME) {
     '^\s*(flutter\.sdk|sdk\.dir)\s*='

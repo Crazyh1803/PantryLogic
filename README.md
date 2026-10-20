@@ -12,6 +12,8 @@ The launcher uses the portable SDKs under `../../work` when present, then falls 
 
 From PowerShell, `Build.ps1` supports `-Action test`, `apk`, `aab`, `run`, or `studio`. APK output is under `build/app/outputs/flutter-apk/`; a signed release AAB requires the private configuration described in `android/RELEASE_SIGNING.md` and is written under `build/app/outputs/bundle/release/`.
 
+If Flutter is absent from PATH, the launcher also reads its existing path from `android/local.properties`. Before building or opening Studio, it repairs the known Flutter `DeeplinkTest.kt` private Gradle JUnit import using Kotlin's existing test API. This updates that SDK test source only when the affected code is present; it keeps tests enabled. For an already-open Studio session, run `./tools/Repair-FlutterGradleTests.ps1 -FlutterRoot '<your Flutter SDK directory>'` once, then retry the build. Repeat after replacing an affected SDK.
+
 ## Install and migrate
 
 Install ../PantryLogic-debug.apk. Its new application ID installs separately from Hearth. Export a backup from the old app, restore it in Pantry Logic, and re-enter AI keys/model selections. Do not remove the old app until you have checked the restored data. API keys are excluded from backups; the backup format remains compatible.
