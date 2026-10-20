@@ -10,6 +10,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'database.dart';
 import 'models.dart';
+import 'ingredient_identity.dart';
+import 'recipe_codec.dart';
 import 'planning_engine.dart';
 import 'grocery_aggregator.dart';
 import 'ai_service.dart';
@@ -1225,14 +1227,54 @@ class _HomeState extends State<Home> {
     ]);
   }
 
+  Future<void> editShoppingItem(Ingredient item) async {
+    final plan = active!;
+    final itemKey = GroceryAggregator.key(item);
+    final key =
+        plan.shoppingOverrides.entries
+            .where((e) => GroceryAggregator.key(e.value) == itemKey)
+            .map((e) => e.key)
+            .firstOrNull ??
+        itemKey;
+    final result = await showDialog<ShoppingItemEdit>(
+      context: context,
+      builder: (_) => ShoppingItemDialog(
+        item: item,
+        canReset: plan.shoppingOverrides.containsKey(key),
+      ),
+    );
+    if (result == null) return;
+    await run(() async {
+      final previous = Map<String, Ingredient>.from(plan.shoppingOverrides);
+      final previousChecked = Set<String>.from(plan.checked);
+      if (result.replacement == null) {
+        GroceryAggregator.resetOverride(plan, key);
+      } else {
+        final replacement = result.replacement!;
+        if (plan.checked.remove(itemKey)) {
+          plan.checked.add(GroceryAggregator.key(replacement));
+        }
+        plan.shoppingOverrides[key] = replacement;
+      }
+      try {
+        await db!.savePlan(plan);
+      } catch (_) {
+        plan.checked
+          ..clear()
+          ..addAll(previousChecked);
+        plan.shoppingOverrides
+          ..clear()
+          ..addAll(previous);
+        rethrow;
+      }
+      if (mounted) setState(() {});
+    });
+  }
+
   Widget groceries() {
     final allItems = active == null
         ? <Ingredient>[]
-        : GroceryAggregator.consolidateWithoutPantry(
-            active!.shoppingRecipes,
-            active!.servings,
-            pantryItems,
-          );
+        : GroceryAggregator.forPlan(active!, pantryItems);
     allItems.sort(
       (a, b) => prefs.aisleOrder
           .indexOf(a.aisle)
@@ -1331,7 +1373,17 @@ class _HomeState extends State<Home> {
                 subtitle: i.isPerishable
                     ? const Text('Fresh · check your fridge first')
                     : null,
-                secondary: Text(displayAmount(i)),
+                secondary: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(displayAmount(i)),
+                    IconButton(
+                      tooltip: 'Edit shopping item',
+                      icon: const Icon(Icons.edit_outlined),
+                      onPressed: busy ? null : () => editShoppingItem(i),
+                    ),
+                  ],
+                ),
                 onChanged: busy
                     ? null
                     : (value) => run(() async {
@@ -1862,17 +1914,122 @@ class IngredientFields {
       unit = TextEditingController(text: item?.unit ?? 'g'),
       aisle = item?.aisle ?? 'Produce',
       fresh = item?.isPerishable ?? false;
-  Ingredient value() => Ingredient(
-    name: name.text.trim(),
-    quantity: double.tryParse(amount.text.replaceAll(',', '.')) ?? 0,
-    quantitySpecified: amount.text.trim().isNotEmpty,
-    unit: unit.text.trim(),
-    aisle: aisle,
-    isPerishable: fresh,
-  );
+  Ingredient value() {
+    if (!IngredientIdentity.validName(name.text)) {
+      throw const FormatException(
+        'Use a food name, not a heading or cooking instruction.',
+      );
+    }
+    return Ingredient(
+      name: name.text.trim(),
+      quantity: double.tryParse(amount.text.replaceAll(',', '.')) ?? 0,
+      quantitySpecified: amount.text.trim().isNotEmpty,
+      unit: unit.text.trim(),
+      aisle: aisle,
+      isPerishable: fresh,
+    );
+  }
+
   void dispose() {
     name.dispose();
     amount.dispose();
     unit.dispose();
   }
+}
+
+class ShoppingItemEdit {
+  final Ingredient? replacement;
+  const ShoppingItemEdit(this.replacement);
+}
+
+class ShoppingItemDialog extends StatefulWidget {
+  final Ingredient item;
+  final bool canReset;
+  const ShoppingItemDialog({
+    super.key,
+    required this.item,
+    this.canReset = false,
+  });
+  @override
+  State<ShoppingItemDialog> createState() => _ShoppingItemDialogState();
+}
+
+class _ShoppingItemDialogState extends State<ShoppingItemDialog> {
+  late final amount = TextEditingController(
+    text: widget.item.quantitySpecified ? widget.item.quantity.toString() : '',
+  );
+  late final unit = TextEditingController(text: widget.item.unit);
+  String? error;
+  @override
+  void dispose() {
+    amount.dispose();
+    unit.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text('Edit ${widget.item.name}'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: amount,
+          decoration: const InputDecoration(
+            labelText: 'Amount (blank = as needed)',
+          ),
+        ),
+        TextField(
+          controller: unit,
+          decoration: const InputDecoration(labelText: 'Unit'),
+        ),
+        if (error != null) Text(error!),
+      ],
+    ),
+    actions: [
+      if (widget.canReset)
+        TextButton(
+          onPressed: () => Navigator.pop(context, const ShoppingItemEdit(null)),
+          child: const Text('Use recipe amount'),
+        ),
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Cancel'),
+      ),
+      FilledButton(
+        onPressed: () {
+          try {
+            final specified = amount.text.trim().isNotEmpty;
+            final quantity = specified ? parseAmount(amount.text) : 0.0;
+            if (quantity == null ||
+                !quantity.isFinite ||
+                (specified && quantity <= 0)) {
+              throw const FormatException(
+                'Enter a positive amount, or leave it blank for as needed.',
+              );
+            }
+            final item = widget.item;
+            Navigator.pop(
+              context,
+              ShoppingItemEdit(
+                Ingredient(
+                  name: item.name,
+                  quantity: quantity,
+                  unit: unit.text.trim().isEmpty
+                      ? 'as needed'
+                      : unit.text.trim(),
+                  aisle: item.aisle,
+                  isPerishable: item.isPerishable,
+                  quantitySpecified: specified,
+                ),
+              ),
+            );
+          } on FormatException catch (e) {
+            setState(() => error = e.message);
+          }
+        },
+        child: const Text('Save'),
+      ),
+    ],
+  );
 }

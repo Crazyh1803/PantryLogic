@@ -955,8 +955,18 @@ extension _HomeFeatures on _HomeState {
           );
           if (candidates.isNotEmpty) sides[i] = candidates.first;
         }
+        final previousPlan = plans
+            .where((p) => p.start == day(start))
+            .firstOrNull;
         await db!.savePlan(
           MealPlan(
+            checked: previousPlan == null ? {} : Set.of(previousPlan.checked),
+            shoppingOverrides: previousPlan == null
+                ? {}
+                : Map.of(previousPlan.shoppingOverrides),
+            manualShoppingItems: previousPlan == null
+                ? []
+                : List.of(previousPlan.manualShoppingItems),
             start: day(start),
             meals: saved,
             servings:
@@ -980,7 +990,6 @@ extension _HomeFeatures on _HomeState {
     if (action == 'removeSide') {
       await run(() async {
         plan.sides.remove(index);
-        plan.checked.clear();
         await db!.savePlan(plan);
         await reload();
       });
@@ -1190,7 +1199,6 @@ extension _HomeFeatures on _HomeState {
       } else {
         plan.cooldownOverrides.remove(index);
       }
-      plan.checked.clear();
       await db!.savePlan(plan);
       await reload(select: plan.start);
     });
@@ -1220,7 +1228,6 @@ extension _HomeFeatures on _HomeState {
                         } else {
                           p.shoppingDays.remove(e.$1);
                         }
-                        p.checked.clear();
                         await db!.savePlan(p);
                         await reload();
                       }),

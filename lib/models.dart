@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'ingredient_identity.dart';
 
 const proteins = ['chicken', 'beef', 'fish', 'vegetarian', 'other'];
 String normalized(String value) =>
@@ -9,6 +10,7 @@ String dateLabel(DateTime d) =>
 
 class Ingredient {
   final String name, unit, aisle;
+  String get canonicalId => IngredientIdentity.id(name);
   final double quantity;
   final bool isPerishable;
   final bool quantitySpecified;
@@ -31,6 +33,7 @@ class Ingredient {
     }
   }
   Map<String, dynamic> toJson() => {
+    'canonical_id': canonicalId,
     'name': name,
     'quantity': quantity,
     'unit': unit,
@@ -192,6 +195,8 @@ class MealPlan {
   final List<Recipe> meals;
   final int servings;
   final Set<String> checked;
+  final Map<String, Ingredient> shoppingOverrides;
+  final List<Ingredient> manualShoppingItems;
   final Map<int, Recipe> sides;
   final Set<int> shoppingDays;
   final List<String> people;
@@ -203,12 +208,16 @@ class MealPlan {
     required this.meals,
     required this.servings,
     Set<String>? checked,
+    Map<String, Ingredient>? shoppingOverrides,
+    List<Ingredient>? manualShoppingItems,
     Map<int, Recipe>? sides,
     Set<int>? shoppingDays,
     this.people = const [],
     this.guests = 0,
     Set<int>? cooldownOverrides,
-  }) : checked = checked ?? {},
+  }) : shoppingOverrides = shoppingOverrides ?? {},
+       manualShoppingItems = manualShoppingItems ?? [],
+       checked = checked ?? {},
        sides = sides ?? {},
        shoppingDays =
            shoppingDays ?? Set.of(List.generate(meals.length, (i) => i)),
@@ -229,6 +238,12 @@ class MealPlan {
     'meals': meals.map((r) => r.toJson()).toList(),
     'servings': servings,
     'checked': checked.toList(),
+    'shopping_overrides': {
+      for (final e in shoppingOverrides.entries) e.key: e.value.toJson(),
+    },
+    'manual_shopping_items': manualShoppingItems
+        .map((i) => i.toJson())
+        .toList(),
   };
   factory MealPlan.decode(int id, String value) {
     final j = jsonDecode(value) as Map<String, dynamic>;
@@ -240,6 +255,16 @@ class MealPlan {
           .toList(),
       servings: j['servings'] as int,
       checked: Set<String>.from(j['checked'] as List? ?? []),
+      shoppingOverrides: {
+        for (final e in (j['shopping_overrides'] as Map? ?? {}).entries)
+          e.key as String: Ingredient.fromJson(
+            Map<String, dynamic>.from(e.value as Map),
+          ),
+      },
+      manualShoppingItems: [
+        for (final i in j['manual_shopping_items'] as List? ?? [])
+          Ingredient.fromJson(Map<String, dynamic>.from(i as Map)),
+      ],
       sides: {
         for (final e in (j['sides'] as Map? ?? {}).entries)
           int.parse(e.key as String): Recipe.fromJson(
