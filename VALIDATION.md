@@ -1,5 +1,11 @@
 # Validation
 
+## Launcher diagnostics — October 20, 2026
+
+- The reported missing-file failure did not reproduce: the existing CMD launcher completed with exit code 0.
+- Added a transcript wrapper and an explicit Windows PowerShell executable path. The updated CMD launcher completed with exit code 0 when invoked from a different working directory; package resolution succeeded and the Studio launch returned successfully.
+- Diagnostics are saved in `%TEMP%\PantryLogic-launch.log`. The original failure still needs its exact message to establish the cause.
+
 ## Flutter Gradle test repair — October 20, 2026
 
 - Reproduced the source-level cause in the configured Flutter SDK: DeeplinkTest imported `assertThrows` from Gradle's private shaded JUnit package.
