@@ -2,7 +2,7 @@ import 'models.dart';
 import 'ingredient_identity.dart';
 import 'recipe_codec.dart';
 
-/// Conservative offline path for a caption with explicit ingredient bullets and method.
+/// Conservative offline path for explicit recipe sections or ingredient bullets.
 Recipe? parseCaption(String source) {
   final lines = source
       .split('\n')
@@ -14,14 +14,31 @@ Recipe? parseCaption(String source) {
     r'^(?:instructions|directions|method|preparation|steps)(?:\s*:)?$',
     caseSensitive: false,
   ).hasMatch(s);
-  final first = lines.indexWhere(bullet);
+  final ingredientHeading = lines.indexWhere(
+    (line) => RegExp(r'^ingredients\s*:$', caseSensitive: false).hasMatch(line),
+  );
+  final sectionMethod = ingredientHeading < 0
+      ? -1
+      : lines.indexWhere(heading, ingredientHeading + 1);
+  final explicitSections =
+      ingredientHeading >= 1 && sectionMethod > ingredientHeading;
+  final first = explicitSections
+      ? ingredientHeading + 1
+      : lines.indexWhere(bullet);
   if (first < 1) return null;
   final bullets = <String>[];
   var end = first;
-  while (end < lines.length &&
-      bullet(lines[end]) &&
-      !heading(lines[end].replaceFirst(RegExp(r'^[-•*]\s+'), ''))) {
-    bullets.add(lines[end++]);
+  if (explicitSections) {
+    // Only accept an unambiguous bounded list. Subsections need AI interpretation.
+    bullets.addAll(lines.sublist(first, sectionMethod));
+    if (bullets.any((line) => line.endsWith(':'))) return null;
+    end = sectionMethod;
+  } else {
+    while (end < lines.length &&
+        bullet(lines[end]) &&
+        !heading(lines[end].replaceFirst(RegExp(r'^[-•*]\s+'), ''))) {
+      bullets.add(lines[end++]);
+    }
   }
   if (bullets.length < 2 || end >= lines.length) return null;
   // A second ingredient group is ambiguous here; let structured ingestion
@@ -35,10 +52,21 @@ Recipe? parseCaption(String source) {
       return null;
     }
   }
+  final sourceHeading = lines.indexWhere(
+    (line) =>
+        RegExp(r'^source(?: url)?\s*:', caseSensitive: false).hasMatch(line),
+    end,
+  );
+  final methodEnd = sourceHeading < 0 ? lines.length : sourceHeading;
+  final sourceUrl = sourceHeading < 0
+      ? null
+      : RegExp(
+          r'https://[^\s)\]>]+',
+        ).firstMatch(lines.skip(sourceHeading).join(' '))?.group(0);
   final methodLines = lines
-      .skip(end)
+      .sublist(end, methodEnd)
       .where((s) => !heading(s))
-      .map((s) => s.replaceFirst(RegExp(r'^(?:[-•*]|\d+[.)])\s+'), ''))
+      .map((s) => s.replaceFirst(RegExp(r'^(?:[-•*]|\d+\\?[.)])\s+'), ''))
       .toList();
   if (methodLines.isNotEmpty) {
     methodLines[methodLines.length - 1] = methodLines.last
@@ -63,8 +91,13 @@ Recipe? parseCaption(String source) {
     caseSensitive: false,
   ).hasMatch(source);
   final ingredients = <Ingredient>[];
+  final compoundNotes = <String>[];
   for (final bullet in bullets) {
     var item = bullet.replaceFirst(RegExp(r'^[-•*]\s+'), '').trim();
+    item = item.replaceFirstMapped(
+      RegExp(r'^(\d+)\s*(?:&|and)\s*(\d+\s*/\s*\d+)\b'),
+      (match) => '${match[1]} ${match[2]}',
+    );
     final match = RegExp(
       r'^(\d+\s+\d+/\d+|\d+/\d+|\d+(?:[.,]\d+)?\s*[½¼¾⅓⅔⅛⅜⅝⅞]?|[½¼¾⅓⅔⅛⅜⅝⅞])\s+(.+)$',
     ).firstMatch(item);
@@ -89,19 +122,30 @@ Recipe? parseCaption(String source) {
       item = unitMatch[2]!;
     }
     final name = item.replaceAll(RegExp(r'["”]+$'), '').trim();
-    if (!IngredientIdentity.validName(name)) return null;
-    final aisle = IngredientIdentity.category(name);
-    ingredients.add(
-      Ingredient(
-        name: name,
-        quantity: amount ?? 0,
-        quantitySpecified: amount != null,
-        unit: unit,
-        aisle: aisle,
-        isPerishable: aisle == 'Produce' || aisle == 'Dairy',
-      ),
-    );
+    final names = name.split(RegExp(r'\s+\+\s+'));
+    if (names.any((name) => !IngredientIdentity.validName(name))) return null;
+    for (var index = 0; index < names.length; index++) {
+      final food = names[index];
+      final foodAmount = index == 0 ? amount : null;
+      final aisle = IngredientIdentity.category(food);
+      ingredients.add(
+        Ingredient(
+          name: food,
+          quantity: foodAmount ?? 0,
+          quantitySpecified: foodAmount != null,
+          unit: foodAmount == null ? 'as needed' : unit,
+          aisle: aisle,
+          isPerishable: aisle == 'Produce' || aisle == 'Dairy',
+        ),
+      );
+    }
+    if (names.length > 1) {
+      compoundNotes.add(
+        'Review the combined ingredient line "$bullet". The stated amount is assigned to ${names.first}; amounts for the other items are unspecified.',
+      );
+    }
   }
+
   final text = normalized(ingredients.map((i) => i.canonicalId).join(' '));
   final protein = RegExp(r'\bbeef\b').hasMatch(text)
       ? 'beef'
@@ -111,11 +155,32 @@ Recipe? parseCaption(String source) {
           r'fish|salmon|cod|tuna|shrimp|prawn|prawns|crab|lobster|mussels?|clams?|scallops?|anchov(?:y|ies)|sardines?|mackerel|trout|tilapia|haddock|hake|sea ?bass|seafood',
         ).hasMatch(text)
       ? 'fish'
-      : RegExp(r'pork|lamb|turkey').hasMatch(text)
+      : RegExp(r'\b(?:pork|lamb|turkey|meat|mince)\b').hasMatch(text)
       ? 'other'
       : 'vegetarian';
+  final metadata = lines.take(first).join('\n');
+  final yieldMatch = RegExp(
+    r'^(?:serves|servings)\s*:\s*(\d+)\s*$',
+    caseSensitive: false,
+    multiLine: true,
+  ).firstMatch(metadata);
+  final servings = yieldMatch == null ? null : int.tryParse(yieldMatch[1]!);
+  int? minutes(String label) {
+    final match = RegExp(
+      '$label\\s*:\\s*(\\d+)\\s*(minutes?|mins?|m|hours?|hrs?|h)\\b',
+      caseSensitive: false,
+    ).firstMatch(metadata);
+    if (match == null) return null;
+    return int.parse(match[1]!) *
+        (match[2]!.toLowerCase().startsWith('h') ? 60 : 1);
+  }
+
   final notes = <String>[
-    'The source does not state servings. Set the actual yield before scaling this recipe.',
+    if (servings == null || servings < 1)
+      'The source does not state servings. Set the actual yield before scaling this recipe.',
+    ...compoundNotes,
+    if (RegExp(r'\b(?:minced meat|meat mince)\b').hasMatch(text))
+      'The source does not specify the type of minced meat. Review its protein category.',
   ];
   if (us && bullets.any((s) => RegExp(r'cup|tbsp|tsp').hasMatch(s))) {
     notes.add(
@@ -137,7 +202,10 @@ Recipe? parseCaption(String source) {
     protein: protein,
     ingredients: ingredients,
     instructions: methodLines,
-    servings: 1,
+    servings: servings != null && servings > 0 ? servings : 1,
+    prepMinutes: minutes('prep'),
+    cookMinutes: minutes('cook'),
+    sourceUrl: sourceUrl,
     reviewNotes: notes,
   );
 }

@@ -66,8 +66,9 @@ Future<void> main() async {
     Exception('429'),
   ]) {
     check(
-      AiExceptionHandler.describe(error).message ==
-          'AI rate limit reached. Please wait about 30 seconds and try again.',
+      AiExceptionHandler.describe(
+        error,
+      ).message.contains('rate limit or quota'),
       'Rate limit maps to actionable message',
     );
   }
@@ -260,13 +261,13 @@ Future<void> main() async {
       )['inlineData'];
       check(
         data['mimeType'] == 'image/png' && data['data'] == base64Encode(bytes),
-        'Google SDK sends actual MIME and base64 DataPart bytes',
+        'Gemini sends actual MIME and base64 image bytes',
       );
       final schema = body['generationConfig']['responseSchema'];
       check(
         schema['properties'].containsKey('prep_minutes') &&
             schema['properties'].containsKey('notes'),
-        'SDK schema includes times and notes',
+        'Gemini schema includes times and notes',
       );
       return http.Response(
         jsonEncode({
@@ -324,7 +325,7 @@ Future<void> main() async {
           backup,
         ]).parseRecipe('context', image: bytes, mimeType: 'image/png')).title ==
         sample.title,
-    'Empty SDK response falls back to the next enabled provider',
+    'Empty Gemini response falls back to the next enabled provider',
   );
   try {
     await FallbackService([]).parseRecipe('context');

@@ -16,6 +16,13 @@ class AiRequestException extends FormatException {
   String toString() => detail;
 }
 
+enum AiResponseProblem { blocked, truncated, empty, invalid }
+
+class AiResponseException extends FormatException {
+  final AiResponseProblem problem;
+  const AiResponseException(this.problem) : super('AI response incomplete');
+}
+
 class AiFallbackException extends FormatException {
   final Object cause;
   AiFallbackException(this.cause)
@@ -39,6 +46,26 @@ class AiExceptionHandler {
     if (error is AiFallbackException) {
       return describe(error.cause, fromLink: fromLink);
     }
+    if (error is AiResponseException) {
+      return switch (error.problem) {
+        AiResponseProblem.blocked => const AiFailure(
+          'Google declined this recipe request. Try the recipe text or a different screenshot.',
+          AiErrorAction.pasteText,
+        ),
+        AiResponseProblem.truncated => const AiFailure(
+          'Google stopped before completing the recipe. Try a shorter source or another model in Settings > AI Configuration.',
+          AiErrorAction.settings,
+        ),
+        AiResponseProblem.empty => const AiFailure(
+          'Google returned no recipe content. Try again or choose another available model in Settings > AI Configuration.',
+          AiErrorAction.settings,
+        ),
+        AiResponseProblem.invalid => const AiFailure(
+          'Google returned a recipe we could not read. Try again with clear recipe text or a different screenshot.',
+          AiErrorAction.pasteText,
+        ),
+      };
+    }
     final text = error.toString().toUpperCase();
     final code = error is AiRequestException
         ? error.statusCode
@@ -50,7 +77,7 @@ class AiExceptionHandler {
           );
     if (code == 429 || text.contains('RESOURCE_EXHAUSTED')) {
       return const AiFailure(
-        'AI rate limit reached. Please wait about 30 seconds and try again.',
+        'AI rate limit or quota reached. Try again later. If this persists, check your provider’s usage limits or choose another model in Settings > AI Configuration.',
       );
     }
     final badKey =

@@ -3,7 +3,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
-import 'package:google_generative_ai/google_generative_ai.dart' as google;
 import 'models.dart';
 import 'grocery_aggregator.dart';
 import 'recipe_codec.dart';
@@ -153,26 +152,22 @@ class GeminiDirectService implements AIService {
     this.model = 'gemini-flash-latest',
     http.Client? client,
   }) : client = client ?? http.Client();
-  static google.Schema sdkSchema(Map<String, dynamic> json) => google.Schema(
-    google.SchemaType.values.firstWhere((t) => t.name == json['type']),
-    enumValues: json['enum'] == null
-        ? null
-        : List<String>.from(json['enum'] as List),
-    items: json['items'] == null
-        ? null
-        : sdkSchema(Map<String, dynamic>.from(json['items'] as Map)),
-    properties: json['properties'] == null
-        ? null
-        : {
-            for (final e in (json['properties'] as Map).entries)
-              e.key as String: sdkSchema(
-                Map<String, dynamic>.from(e.value as Map),
-              ),
-          },
-    requiredProperties: json['required'] == null
-        ? null
-        : List<String>.from(json['required'] as List),
-  );
+  // Gemini's responseSchema uses its OpenAPI subset, not the full JSON schema
+  // shared with the other providers.
+  static Map<String, dynamic> _responseSchema(Map<String, dynamic> json) => {
+    'type': (json['type'] as String).toUpperCase(),
+    if (json['enum'] != null) 'enum': json['enum'],
+    if (json['items'] != null)
+      'items': _responseSchema(Map<String, dynamic>.from(json['items'] as Map)),
+    if (json['properties'] != null)
+      'properties': {
+        for (final entry in (json['properties'] as Map).entries)
+          entry.key as String: _responseSchema(
+            Map<String, dynamic>.from(entry.value as Map),
+          ),
+      },
+    if (json['required'] != null) 'required': json['required'],
+  };
   Future<Recipe> request(
     String prompt, {
     Uint8List? image,
@@ -188,30 +183,94 @@ class GeminiDirectService implements AIService {
     if (image != null && image.length > 10 * 1024 * 1024) {
       throw const FormatException('Choose an image smaller than 10 MB.');
     }
-    final transport = _GeminiTransport(client, apiKey, selectedModel);
-    final sdk = google.GenerativeModel(
-      model: selectedModel,
-      apiKey: apiKey.trim(),
-      httpClient: transport,
-      systemInstruction: google.Content.system(recipeInstructions),
-      generationConfig: google.GenerationConfig(
-        responseMimeType: 'application/json',
-        responseSchema: sdkSchema(recipeSchema),
-      ),
+    final response = await guardedHttp(
+      () async => await client
+          .post(
+            Uri.https(
+              'generativelanguage.googleapis.com',
+              '/v1beta/models/$selectedModel:generateContent',
+            ),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey.trim(),
+            },
+            body: jsonEncode({
+              'systemInstruction': {
+                'parts': [
+                  {'text': recipeInstructions},
+                ],
+              },
+              'contents': [
+                {
+                  'role': 'user',
+                  'parts': [
+                    {'text': prompt},
+                    if (image != null)
+                      {
+                        'inlineData': {
+                          'mimeType': mimeType ?? 'image/jpeg',
+                          'data': base64Encode(image),
+                        },
+                      },
+                  ],
+                },
+              ],
+              'generationConfig': {
+                'responseMimeType': 'application/json',
+                'responseSchema': _responseSchema(recipeSchema),
+              },
+            }),
+          )
+          .timeout(const Duration(seconds: 75)),
     );
-    final response = await sdk
-        .generateContent([
-          google.Content.multi([
-            google.TextPart(prompt),
-            if (image != null) google.DataPart(mimeType ?? 'image/jpeg', image),
-          ]),
-        ])
-        .timeout(const Duration(seconds: 90));
-    final output = response.text;
-    if (output == null || output.trim().isEmpty) {
-      throw const FormatException('No complete recipe found.');
+    if (response.statusCode != 200) {
+      throw AiRequestException(
+        response.statusCode,
+        providerError('Gemini', response, apiKey, selectedModel),
+      );
     }
-    return decodeRecipe(output);
+    // Read only recipe output. Reasoning text and new API metadata must not be
+    // passed to the recipe decoder or rejected by an outdated SDK enum parser.
+    try {
+      final body = jsonDecode(response.body) as Map;
+      final feedback = body['promptFeedback'];
+      if (feedback is Map &&
+          feedback['blockReason'] != null &&
+          feedback['blockReason'] != 'BLOCK_REASON_UNSPECIFIED') {
+        throw const AiResponseException(AiResponseProblem.blocked);
+      }
+      final candidates = body['candidates'] as List? ?? [];
+      if (candidates.isEmpty) {
+        throw const AiResponseException(AiResponseProblem.empty);
+      }
+      final candidate = candidates.first as Map;
+      final finish = candidate['finishReason'];
+      if (finish == 'MAX_TOKENS') {
+        throw const AiResponseException(AiResponseProblem.truncated);
+      }
+      if (finish != null &&
+          finish != 'STOP' &&
+          finish != 'FINISH_REASON_UNSPECIFIED') {
+        throw const AiResponseException(AiResponseProblem.blocked);
+      }
+      final content = candidate['content'] as Map?;
+      final parts = content?['parts'] as List? ?? [];
+      final output = parts
+          .whereType<Map>()
+          .where((part) => part['thought'] != true && part['text'] is String)
+          .map((part) => part['text'] as String)
+          .join();
+      if (output.trim().isEmpty) {
+        throw const AiResponseException(AiResponseProblem.empty);
+      }
+      return decodeRecipe(output);
+    } on AiResponseException {
+      rethrow;
+    } on FormatException {
+      throw const AiResponseException(AiResponseProblem.invalid);
+    } on TypeError {
+      throw const AiResponseException(AiResponseProblem.invalid);
+    }
   }
 
   @override
@@ -256,36 +315,6 @@ class GeminiDirectService implements AIService {
     }
     validatePantryOnlyRecipe(recipe, pantryOnlyIngredients);
     return recipe;
-  }
-}
-
-class _GeminiTransport extends http.BaseClient {
-  final http.Client inner;
-  final String apiKey, model;
-  _GeminiTransport(this.inner, this.apiKey, this.model);
-  @override
-  Future<http.StreamedResponse> send(http.BaseRequest request) async {
-    final bytes = await request.finalize().toBytes();
-    final response = await guardedHttp(() async {
-      final copy = http.Request(request.method, request.url)
-        ..headers.addAll(request.headers)
-        ..bodyBytes = bytes;
-      return http.Response.fromStream(
-        await inner.send(copy),
-      ).timeout(const Duration(seconds: 75));
-    });
-    if (response.statusCode != 200) {
-      throw AiRequestException(
-        response.statusCode,
-        providerError('Gemini', response, apiKey, model),
-      );
-    }
-    return http.StreamedResponse(
-      Stream.value(response.bodyBytes),
-      response.statusCode,
-      headers: response.headers,
-      request: request,
-    );
   }
 }
 

@@ -123,8 +123,13 @@ class RecipeIngestionService {
         throw const FormatException('Use a valid HTTPS recipe link.');
       }
     }
+    // Complete pasted text should not depend on whether its attribution URL
+    // can be scraped (or whether that website is throttling requests).
+    Recipe? local = image == null && notes.isNotEmpty
+        ? parseCaption(notes)
+        : null;
     String extracted = '';
-    if (source.isNotEmpty && image == null) {
+    if (source.isNotEmpty && image == null && local == null) {
       try {
         extracted = await scrape(source);
       } on EmptyScrapedContentException {
@@ -138,7 +143,7 @@ class RecipeIngestionService {
       }
     }
     // Caption is explicit user input and can stand alone even if a social URL is blocked.
-    final local = image == null
+    local ??= image == null
         ? parseCaption(notes.isNotEmpty ? notes : extracted)
         : null;
     final recipe =

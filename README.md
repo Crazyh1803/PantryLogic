@@ -20,6 +20,21 @@ From PowerShell, `Build.ps1` supports `-Action test`, `apk`, `aab`, `run`, or `s
 
 If Flutter is absent from PATH, the launcher also reads its existing path from `android/local.properties`. Before building or opening Studio, it repairs the known Flutter `DeeplinkTest.kt` private Gradle JUnit import using Kotlin's existing test API. This updates that SDK test source only when the affected code is present; it keeps tests enabled. For an already-open Studio session, run `./tools/Repair-FlutterGradleTests.ps1 -FlutterRoot '<your Flutter SDK directory>'` once, then retry the build. Repeat after replacing an affected SDK.
 
+## Build this checkout in Android Studio (Windows)
+
+Pull the latest `main`, then install/update Flutter stable and the Flutter/Dart plugins in Android Studio. Use an SDK compatible with `pubspec.lock` (Dart 3.11 or newer); if locked SDK packages conflict, update Flutter rather than deleting the lockfile. Enable Windows Developer Mode for Flutter plugin symlinks. Install Android SDK Platform 37 through Studio's SDK Manager and accept the Android SDK licenses with `flutter doctor --android-licenses`. Gradle's checked-in daemon configuration requests Java 25; allow Studio/Gradle to provision that toolchain, or install it locally.
+
+Close Studio and double-click `Open-Pantry-Logic.cmd`. The launcher resolves the locked packages, prepares missing Gradle wrapper files and local SDK properties, and opens the repository root with the shared **Pantry Logic** Flutter run configuration. Select your phone/emulator and click Run. The generated SDK paths and local caches stay ignored by Git.
+
+Alternatively, from PowerShell in the repository root:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build.ps1 -Action test
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Build.ps1 -Action apk
+```
+
+The test action runs the Flutter suite and all five standalone core/AI/import suites. The APK action produces `build/app/outputs/flutter-apk/app-debug.apk`; install it to use the Gemini and pasted-recipe fixes. The Studio launcher uses the same setup; it prepares configuration without compiling an APK. No API keys or release-signing files are included in Git.
+
 ## Install and migrate
 
 Install ../PantryLogic-debug.apk. Its new application ID installs separately from Hearth. Export a backup from the old app, restore it in Pantry Logic, and re-enter AI keys/model selections. Do not remove the old app until you have checked the restored data. API keys are excluded from backups; the backup format remains compatible.

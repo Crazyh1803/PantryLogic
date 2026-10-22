@@ -92,21 +92,29 @@ if ($env:ANDROID_HOME) {
 
 Push-Location $PSScriptRoot
 try {
-    & $flutterPath pub get
+    & $flutterPath pub get --enforce-lockfile
     if ($LASTEXITCODE -ne 0) {
-        if ($Action -eq 'studio') {
-            Write-Warning 'Dependency resolution failed. Opening Android Studio so it can retry.'
-        } else {
-            throw 'Dependency resolution failed.'
-        }
+        throw 'Dependency resolution failed. Check the Flutter version and enable Windows Developer Mode if Flutter reports missing symlink support.'
     }
 
     switch ($Action) {
-        'test' { & $flutterPath test }
+        'test' {
+            & $flutterPath test --no-pub
+            if ($LASTEXITCODE -ne 0) { throw 'Flutter tests failed.' }
+            $dartPath = Join-Path $flutterRoot 'bin\dart.bat'
+            foreach ($suite in @('core_checks', 'ai_checks', 'feature_checks', 'round2_checks', 'ingestion_checks')) {
+                & $dartPath run (Join-Path $PSScriptRoot "test\$suite.dart")
+                if ($LASTEXITCODE -ne 0) { throw "$suite failed." }
+            }
+        }
         'apk' { & $flutterPath build apk --debug }
         'aab' { & $flutterPath build appbundle --release }
         'run' { & $flutterPath run }
         'studio' {
+            # Fresh clones omit ignored Gradle wrapper files. Let Flutter prepare
+            # them and local build properties before Studio imports Android Gradle.
+            & $flutterPath build apk --debug --config-only --no-pub
+            if ($LASTEXITCODE -ne 0) { throw 'Android project preparation failed. See the Flutter output above.' }
             & (Join-Path $PSScriptRoot 'tools\Initialize-StudioProject.ps1') -ProjectPath $PSScriptRoot
             $studioCandidates = @(
                 $env:STUDIO_EXE,
